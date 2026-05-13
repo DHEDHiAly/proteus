@@ -19,6 +19,7 @@ export interface AgentMessage {
     round?: number
     target?: string
     sequence?: string
+    seed?: string
     pdb_id?: string
     mutations?: { position: number; from: string; to: string }[]
     scores?: Record<string, number>

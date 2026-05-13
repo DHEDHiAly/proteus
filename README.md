@@ -1,6 +1,6 @@
 # Proteus: MCMC Protein Design Platform
 
-A production-grade protein design platform combining Markov Chain Monte Carlo with machine learning to discover novel protein therapeutics targeting oncology targets. Built for the Lumos Fellowship.
+A production-grade protein design platform combining Markov Chain Monte Carlo with machine learning to discover novel protein therapeutics targeting oncology targets. For research use only.
 
 ## Architecture
 
@@ -188,4 +188,4 @@ docker-compose -f docker-compose.prod.yml up -d
 
 FOR RESEARCH USE ONLY. Not a medical device. All designs must undergo wet-lab validation.
 
-Built for the Lumos Fellowship.
+For research use only.

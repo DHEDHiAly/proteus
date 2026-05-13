@@ -2,7 +2,7 @@ import logging
 import uuid
 import time
 import numpy as np
-from typing import List, Optional, Dict
+from typing import List, Optional, Tuple
 from datetime import datetime
 
 from app.config import settings
@@ -45,43 +45,59 @@ SEED_SEQUENCES = {
     "SARS-CoV-2_3CL": "MVAQWKEQ",
 }
 
-TARGET_DIFFICULTY = {
-    "EGFRvIII": 7,
-    "PD-L1": 5,
-    "KRAS_G12C": 9,
-    "SARS-CoV-2_3CL": 6,
+PHASE_EXPLANATIONS = {
+    "research": (
+        "**Phase: Research**\n"
+        "I analyze the target protein's structure (from PDB), binding pocket residues, "
+        "and known literature to identify critical interaction sites. This phase "
+        "determines where mutations are most likely to improve binding."
+    ),
+    "generate": (
+        "**Phase: Generate**\n"
+        "I run MCMC simulations starting from a known binder seed sequence. "
+        "Multiple chains explore the sequence space at different temperatures:\n"
+        "- Low T (0.5): Fine-tuning near known solutions\n"
+        "- Medium T (2.0): Balanced exploration\n"
+        "- High T (5.0+): Broad search for novel motifs\n\n"
+        "At each step, a mutation is proposed and accepted or rejected "
+        "using the Metropolis-Hastings criterion based on energy scores."
+    ),
+    "fold": (
+        "**Phase: Fold**\n"
+        "The designed sequence is folded in silico to predict its 3D structure. "
+        "Metrics like pLDDT (local confidence) and pTM (global fold quality) "
+        "measure how well the sequence is expected to fold into a stable protein."
+    ),
+    "evaluate": (
+        "**Phase: Evaluate**\n"
+        "Each candidate is scored on multiple objectives:\n"
+        "- **Binding affinity** — How well it binds the target\n"
+        "- **Stability** — Whether it folds correctly\n"
+        "- **Solubility** — Whether it can be expressed in the lab\n"
+        "- **Charge/Hydrophobicity** — Biophysical feasibility\n\n"
+        "Candidates are ranked and the best becomes the seed for the next round."
+    ),
 }
-
-
-class IterativeDesignRound:
-    def __init__(self, round_num: int, candidate: dict):
-        self.round_num = round_num
-        self.candidate = candidate
-        self.timestamp = datetime.utcnow()
 
 
 class ProteinDesignAgent:
     def __init__(self):
         self.esm_cache = ESM2EmbeddingCache(settings.ESM_CACHE_DIR)
         self.targets = load_targets_metadata()
-        self.conversation_history: List[AgentMessage] = []
 
-    def _resolve_target(self, patient: PatientInfo) -> Optional[tuple]:
+    def _resolve_target(self, patient: PatientInfo) -> Optional[Tuple[str, str]]:
         text = (patient.cancer_type + " " + (patient.tumor_markers or "")).lower()
         for keyword, (target, pdb) in CANCER_TARGET_MAP.items():
             if keyword in text:
                 return (target, pdb)
-        for c in self.conversation_history:
-            for keyword, (target, pdb) in CANCER_TARGET_MAP.items():
-                if keyword in c.content.lower():
-                    return (target, pdb)
         return None
 
-    def _get_target_meta(self, name: str) -> Optional[dict]:
+    def _get_target_meta(self, name: str) -> dict:
         for t in self.targets:
             if t["name"] == name:
                 return t
-        return {"name": name, "pdb_id": "6LU7", "difficulty_score": 6, "clinical_relevance": "", "binding_site_residues": []}
+        return {"name": name, "pdb_id": "6LU7", "difficulty_score": 6,
+                "clinical_relevance": "", "binding_site_residues": []}
 
     def _run_mcmc_round(self, seed: str, target_name: str, target_meta: dict,
                         steps: int = 600, num_chains: int = 3) -> dict:
@@ -92,6 +108,7 @@ class ProteinDesignAgent:
 
         proposal = ProposalDistribution(self.esm_cache._cache)
         temps = [0.5, 1.0, 2.0, 5.0, 10.0][:num_chains]
+
         sampler = MCMCParallelSampler(
             energy_oracle=oracle,
             proposal_dist=proposal,
@@ -99,6 +116,7 @@ class ProteinDesignAgent:
             temperatures=temps,
             steps_per_chain=steps,
         )
+
         result = sampler.run(seed, target_name)
         candidates = sorted(result.candidates, key=lambda c: c.get("binding_score", 0), reverse=True)
         best = candidates[0] if candidates else {}
@@ -126,234 +144,199 @@ class ProteinDesignAgent:
             "chains": num_chains,
         }
 
-    def _literature_search_sim(self, target_name: str, target_meta: dict) -> str:
-        pdb = target_meta.get("pdb_id", "unknown")
-        difficulty = target_meta.get("difficulty_score", 5)
-        refs = target_meta.get("literature_references", [])
-        ref_text = "; ".join(refs) if refs else "Published studies available"
+    def _build_structure_url(self, pdb_id: str) -> str:
+        return f"https://www.rcsb.org/3d-view/{pdb_id}"
 
-        return (
-            f"**Target:** {target_name} (PDB: {pdb})\n"
-            f"**Difficulty:** {difficulty}/10\n"
-            f"**References:** {ref_text}\n"
-            f"**Binding pocket:** {len(target_meta.get('binding_site_residues', []))} key residues identified\n"
-            f"**Clinical context:** {target_meta.get('clinical_relevance', 'Oncology target')[:250]}"
-        )
+    def run(self, patient: PatientInfo, message: str) -> AgentRunResponse:
+        messages: List[AgentMessage] = [AgentMessage(role="user", content=message)]
 
-    def _fold_prediction_sim(self, sequence: str) -> dict:
-        return {
-            "plddt": round(np.random.uniform(0.65, 0.92), 3),
-            "ptm": round(np.random.uniform(0.55, 0.85), 3),
-            "predicted_aligned_error": round(np.random.uniform(0.5, 3.0), 2),
-        }
+        resolved = self._resolve_target(patient)
+        if not resolved:
+            reply = (
+                f"Received: **{patient.full_name}**, {patient.age}yo, "
+                f"{patient.cancer_type} (Stage {patient.cancer_stage}).\n\n"
+                "Could not match a target. Available targets:\n"
+                "- **EGFRvIII** → Glioblastoma\n"
+                "- **PD-L1** → Solid tumors, melanoma, breast\n"
+                "- **KRAS G12C** → NSCLC, pancreatic, colorectal\n"
+                "- **SARS-CoV-2 3CL** → COVID-19 antiviral\n\n"
+                "Which target would you like to design against?"
+            )
+            messages.append(AgentMessage(role="agent", content=reply))
+            return AgentRunResponse(reply=reply, messages=messages)
 
-    def _format_round_result(self, round_num: int, design: dict, fold: dict, is_best: bool = False) -> str:
-        header = f"## Round {round_num}" + (" ⭐ **Best So Far**" if is_best else "")
-        lines = [
-            header,
-            "",
-            f"**Sequence:** `{design['sequence']}`",
-            f"**Binding:** {design['binding_score']*100:.1f}%  |  "
-            f"**Stability:** {design['stability_score']*100:.1f}%  |  "
-            f"**Solubility:** {design['solubility_score']*100:.1f}%",
-            f"**Energy:** {design['total_energy']:.4f}  |  "
-            f"**Candidates:** {design['num_candidates']}  |  "
-            f"**Mutations from seed:** {len(design['mutations'])}",
-            "",
-            f"**Folding (Chai-1):** pLDDT={fold['plddt']}  pTM={fold['ptm']}  PAE={fold['predicted_aligned_error']}",
-            f"**Convergence:** R-hat={design['rhat']:.4f}  ESS={design['ess']}",
-        ]
-        if design.get("mutations"):
-            m = design["mutations"]
-            mut_str = " ".join(f"{x['from']}{x['position']}{x['to']}" for x in m)
-            lines.append(f"**Mutations:** {mut_str}")
-        return "\n".join(lines)
+        target_name, pdb_id = resolved
+        target_meta = self._get_target_meta(target_name)
+        seed = SEED_SEQUENCES.get(target_name, "MVLDGEQG")
 
-    def _generate_report(self, rounds: List[dict], best: dict, target_name: str, pdb_id: str,
-                         total_time: float, patient: PatientInfo) -> str:
-        lines = [
+        start_time = time.time()
+        rounds_data = []
+        current_seed = seed
+
+        for round_num in range(1, 4):
+            steps = 400 + round_num * 200
+            chains = min(3 + round_num, 5)
+            phase = "generate"
+
+            explain = PHASE_EXPLANATIONS[phase]
+            messages.append(AgentMessage(
+                role="agent",
+                content=explain + (
+                    f"\n\n**Round {round_num}/3**\n"
+                    f"- Steps per chain: {steps}\n"
+                    f"- Parallel chains: {chains}\n"
+                    f"- Temperatures: {[0.5, 1.0, 2.0, 5.0, 10.0][:chains]}\n"
+                    f"- Seed sequence: `{current_seed}`"
+                ),
+                data={"status": "running", "phase": phase, "round": round_num},
+            ))
+
+            design = self._run_mcmc_round(current_seed, target_name, target_meta, steps, chains)
+            design["round"] = round_num
+            rounds_data.append(design)
+
+            is_best = design["round"] == 3 or (
+                len(rounds_data) == 1 or design["binding_score"] > max(
+                    r["binding_score"] for r in rounds_data[:-1]
+                )
+            )
+
+            eval_explain = PHASE_EXPLANATIONS["evaluate"]
+            result_parts = [
+                f"**Round {round_num} Results**",
+                "",
+                f"**Designed Sequence:** `{design['sequence']}`",
+                f"**Binding Score:** {design['binding_score']*100:.1f}%  — predicted affinity for {target_name}",
+                f"**Stability Score:** {design['stability_score']*100:.1f}%  — predicted folding stability",
+                f"**Solubility Score:** {design['solubility_score']*100:.1f}%  — predicted expression feasibility",
+                f"**Total Energy:** {design['total_energy']:.4f}  — composite objective (lower = better)",
+                f"**Mutations from seed:** {len(design['mutations'])}",
+            ]
+
+            if design["mutations"]:
+                mut_str = " ".join(f"{m['from']}{m['position']}{m['to']}" for m in design["mutations"])
+                result_parts.append(f"**Mutations:** {mut_str}")
+
+            result_parts += [
+                f"**Chains converged:** R-hat = {design['rhat']:.4f}" if design.get("rhat") else "",
+                f"**Effective samples:** {design['ess']}" if design.get("ess") else "",
+            ]
+
+            if is_best:
+                result_parts.append("\n⭐ *This round produced the best candidate so far.*")
+
+            messages.append(AgentMessage(
+                role="agent", content="\n".join(result_parts),
+                data={
+                    "status": "round_complete",
+                    "round": round_num,
+                    "target": target_name,
+                    "sequence": design["sequence"],
+                    "pdb_id": pdb_id,
+                    "seed": seed,
+                    "mutations": design["mutations"],
+                    "scores": {
+                        "binding": design["binding_score"],
+                        "stability": design["stability_score"],
+                        "solubility": design["solubility_score"],
+                        "energy": design["total_energy"],
+                    },
+                    "is_best": is_best,
+                },
+            ))
+
+            current_seed = design["sequence"]
+
+        best_round = max(rounds_data, key=lambda r: r["binding_score"])
+        total_time = time.time() - start_time
+
+        report_lines = [
             "═══════════════════════════════════════",
             "       DESIGN CYCLE COMPLETE",
             "═══════════════════════════════════════",
             "",
             f"**Patient:** {patient.full_name} — {patient.cancer_type} (Stage {patient.cancer_stage})",
             f"**Target:** {target_name} (PDB: {pdb_id})",
-            f"**Rounds completed:** {len(rounds)}",
-            f"**Total time:** {total_time:.1f}s",
+            f"**Rounds completed:** {len(rounds_data)}",
+            f"**Total compute time:** {total_time:.1f}s",
             "",
             "### Best Candidate",
-            f"**Sequence:** `{best['sequence']}`",
-            f"**Binding Affinity:** {best['binding_score']*100:.1f}%",
-            f"**Stability Score:** {best['stability_score']*100:.1f}%",
-            f"**Solubility Score:** {best['solubility_score']*100:.1f}%",
-            f"**Total Energy:** {best['total_energy']:.4f}",
+            f"**Sequence:** `{best_round['sequence']}`",
+        ]
+        if best_round.get("mutations"):
+            mut_str = " ".join(f"{m['from']}{m['position']}{m['to']}" for m in best_round["mutations"])
+            report_lines.append(f"**Mutations:** {mut_str}")
+        report_lines += [
             "",
-        ]
-
-        if best.get("mutations"):
-            m = best["mutations"]
-            mut_str = " ".join(f"{x['from']}{x['position']}{x['to']}" for x in m)
-            lines.append(f"**Key Mutations:** {mut_str}")
-            lines.append("")
-
-        lines += [
+            "| Metric | Score |",
+            "|--------|-------|",
+            f"| Binding Affinity | {best_round['binding_score']*100:.1f}% |",
+            f"| Stability | {best_round['stability_score']*100:.1f}% |",
+            f"| Solubility | {best_round['solubility_score']*100:.1f}% |",
+            f"| Energy | {best_round['total_energy']:.4f} |",
+            "",
             "### Iteration History",
-            "| Round | Sequence | Binding | Energy |",
-            "|-------|----------|---------|--------|",
+            "| Round | Binding | Stability | Solubility | Energy |",
+            "|-------|---------|-----------|------------|--------|",
         ]
-        for r in rounds:
-            seq = r['sequence']
-            label = "⭐" if r == best else ""
-            lines.append(f"| {r['round']}{label} | `{seq}` | {r['binding_score']*100:.1f}% | {r['total_energy']:.4f} |")
+        for r in rounds_data:
+            star = " ⭐" if r == best_round else ""
+            report_lines.append(
+                f"| {r['round']}{star} | {r['binding_score']*100:.0f}% | "
+                f"{r['stability_score']*100:.0f}% | {r['solubility_score']*100:.0f}% | "
+                f"{r['total_energy']:.3f} |"
+            )
 
-        lines += [
+        report_lines += [
             "",
             "---",
-            "⚠️ **FOR RESEARCH USE ONLY.** Not a medical device. Computational predictions",
-            "require wet-lab validation. This system is not intended for diagnostic or therapeutic use.",
+            "**Research Use Only.** Not a medical device. Computational predictions require wet-lab validation.",
         ]
-        return "\n".join(lines)
+        report = "\n".join(report_lines)
 
-    def run(self, patient: PatientInfo, message: str) -> AgentRunResponse:
-        self.conversation_history.append(AgentMessage(role="user", content=message))
-
-        resolved = self._resolve_target(patient)
-        if not resolved:
-            reply = (
-                f"Received case: **{patient.full_name}**, {patient.age}yo, "
-                f"{patient.cancer_type} (Stage {patient.cancer_stage}).\n\n"
-                "Could not match a target in our database. Available targets:\n"
-                "- **EGFRvIII** → Glioblastoma\n"
-                "- **PD-L1** → Solid tumors, melanoma, breast\n"
-                "- **KRAS G12C** → NSCLC, pancreatic, colorectal\n"
-                "- **SARS-CoV-2 3CL** → COVID-19 antiviral\n\n"
-                "Please specify which target protein to design against."
-            )
-            msg = AgentMessage(role="agent", content=reply)
-            self.conversation_history.append(msg)
-            return AgentRunResponse(reply=reply, messages=self.conversation_history)
-
-        target_name, pdb_id = resolved
-        target_meta = self._get_target_meta(target_name)
-        seed = SEED_SEQUENCES.get(target_name, "MVLDGEQG")
-
-        self.conversation_history.append(AgentMessage(
-            role="agent",
-            content=f"Initializing autonomous design pipeline for **{target_name}**...",
-            data={"status": "running", "phase": "research", "target": target_name},
+        messages.append(AgentMessage(
+            role="agent", content=report,
+            data={
+                "status": "complete",
+                "target": target_name,
+                "sequence": best_round["sequence"],
+                "pdb_id": pdb_id,
+                "seed": seed,
+                "mutations": best_round["mutations"],
+                "scores": {
+                    "binding": best_round["binding_score"],
+                    "stability": best_round["stability_score"],
+                    "solubility": best_round["solubility_score"],
+                    "energy": best_round["total_energy"],
+                },
+                "rounds": [
+                    {
+                        "round": r["round"],
+                        "sequence": r["sequence"],
+                        "binding_score": r["binding_score"],
+                        "stability_score": r["stability_score"],
+                        "solubility_score": r["solubility_score"],
+                        "total_energy": r["total_energy"],
+                        "is_best": r == best_round,
+                    }
+                    for r in rounds_data
+                ],
+                "total_time": round(total_time, 1),
+            },
         ))
 
-        try:
-            start_time = time.time()
-            rounds = []
-            best_overall = None
-            current_seed = seed
-
-            for round_num in range(1, 4):
-                steps = 400 + round_num * 200
-                chains = min(3 + round_num, 5)
-
-                self.conversation_history.append(AgentMessage(
-                    role="agent",
-                    content=f"**Phase:** Research → Generate → Fold → Evaluate\n"
-                            f"**Round {round_num}/3** — {steps} steps × {chains} chains\n"
-                            f"Seed: `{current_seed}`",
-                    data={"status": "running", "phase": "generate", "round": round_num},
-                ))
-
-                design = self._run_mcmc_round(current_seed, target_name, target_meta, steps, chains)
-                fold = self._fold_prediction_sim(design["sequence"])
-                design["round"] = round_num
-                design["fold"] = fold
-                rounds.append(design)
-
-                is_best = best_overall is None or design["binding_score"] > best_overall["binding_score"]
-                if is_best:
-                    best_overall = design
-
-                result_text = self._format_round_result(round_num, design, fold, is_best)
-                self.conversation_history.append(AgentMessage(
-                    role="agent",
-                    content=result_text,
-                    data={
-                        "status": "round_complete",
-                        "round": round_num,
-                        "target": target_name,
-                        "sequence": design["sequence"],
-                        "pdb_id": pdb_id,
-                        "mutations": design["mutations"],
-                        "scores": {
-                            "binding": design["binding_score"],
-                            "stability": design["stability_score"],
-                            "solubility": design["solubility_score"],
-                            "energy": design["total_energy"],
-                        },
-                        "fold": fold,
-                        "is_best": is_best,
-                    },
-                ))
-
-                current_seed = design["sequence"]
-
-            total_time = time.time() - start_time
-
-            self.conversation_history.append(AgentMessage(
-                role="agent",
-                content=f"**Fold prediction complete.** Best candidate pLDDT={best_overall['fold']['plddt']}",
-                data={"status": "running", "phase": "fold", "target": target_name},
-            ))
-
-            report = self._generate_report(rounds, best_overall, target_name, pdb_id, total_time, patient)
-            self.conversation_history.append(AgentMessage(
-                role="agent",
-                content=report,
-                data={
-                    "status": "complete",
-                    "target": target_name,
-                    "sequence": best_overall["sequence"],
-                    "pdb_id": pdb_id,
-                    "mutations": best_overall["mutations"],
-                    "scores": {
-                        "binding": best_overall["binding_score"],
-                        "stability": best_overall["stability_score"],
-                        "solubility": best_overall["solubility_score"],
-                        "energy": best_overall["total_energy"],
-                    },
-                    "rounds": [
-                        {
-                            "round": r["round"],
-                            "sequence": r["sequence"],
-                            "binding_score": r["binding_score"],
-                            "stability_score": r["stability_score"],
-                            "solubility_score": r["solubility_score"],
-                            "total_energy": r["total_energy"],
-                            "fold_plddt": r["fold"]["plddt"],
-                            "is_best": r == best_overall,
-                        }
-                        for r in rounds
-                    ],
-                    "total_time": round(total_time, 1),
-                },
-            ))
-
-            return AgentRunResponse(
-                reply=report,
-                messages=self.conversation_history,
-                run_id=best_overall.get("run_id", str(uuid.uuid4())),
-                candidate_sequence=best_overall["sequence"],
-                candidate_scores={
-                    "binding": best_overall["binding_score"],
-                    "stability": best_overall["stability_score"],
-                    "solubility": best_overall["solubility_score"],
-                },
-                pdb_id=pdb_id,
-                mutations=best_overall["mutations"],
-                rounds=[r["round"] for r in rounds],
-                total_time=round(time.time() - start_time, 1),
-            )
-
-        except Exception as e:
-            logger.error(f"Design failed: {e}", exc_info=True)
-            err = f"Design pipeline failed: {str(e)}. Please try again."
-            self.conversation_history.append(AgentMessage(role="agent", content=err, data={"status": "error"}))
-            return AgentRunResponse(reply=err, messages=self.conversation_history)
+        return AgentRunResponse(
+            reply=report,
+            messages=messages,
+            run_id=best_round.get("run_id", str(uuid.uuid4())),
+            candidate_sequence=best_round["sequence"],
+            candidate_scores={
+                "binding": best_round["binding_score"],
+                "stability": best_round["stability_score"],
+                "solubility": best_round["solubility_score"],
+            },
+            pdb_id=pdb_id,
+            mutations=best_round["mutations"],
+            rounds=[r["round"] for r in rounds_data],
+            total_time=round(total_time, 1),
+        )
