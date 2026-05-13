@@ -37,8 +37,8 @@ export const useAuth = create<AuthState>((set) => ({
   register: async (email, password, fullName) => {
     set({ isLoading: true, error: null })
     try {
-      const res = await authApi.register({ email, password, full_name: fullName })
-      set({ user: res.data, isAuthenticated: false, isLoading: false })
+      await authApi.register({ email, password, full_name: fullName })
+      set({ isAuthenticated: false, isLoading: false })
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Registration failed'
       set({ error: msg, isLoading: false })

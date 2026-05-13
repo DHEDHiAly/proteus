@@ -9,6 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.runs import router as runs_router
 from app.api.targets import router as targets_router
 from app.api.admin import router as admin_router
+from app.api.agent import router as agent_router
 from app.services.compliance import ComplianceChecker
 
 
@@ -52,6 +53,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
 app.include_router(targets_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(agent_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

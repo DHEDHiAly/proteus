@@ -10,6 +10,7 @@ import RunDetailPage from './pages/RunDetailPage'
 import ComparePage from './pages/ComparePage'
 import ProfilePage from './pages/ProfilePage'
 import AdminPage from './pages/AdminPage'
+import AgentPage from './pages/AgentPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -99,7 +100,17 @@ export default function App() {
           </AdminRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="/agent"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AgentPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/" element={<Navigate to="/agent" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

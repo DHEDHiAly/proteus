@@ -125,6 +125,10 @@ export interface WebSocketMessage {
   temperature?: number
   current_sequence?: string
   best_sequence?: string
+  converged?: boolean
+  rhat?: number
+  ess?: number
+  wall_time_seconds?: number
   message?: string
 }
 

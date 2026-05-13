@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import clsx from 'clsx'
 
 const navItems = [
+  { path: '/agent', label: 'AI Designer', icon: '🤖' },
   { path: '/dashboard', label: 'Dashboard', icon: '◈' },
   { path: '/runs/new', label: 'New Run', icon: '⊕' },
   { path: '/compare', label: 'Compare', icon: '⇄' },
