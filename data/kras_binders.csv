@@ -1,0 +1,10 @@
+sequence,binding_affinity_nM,stability_score,bbb_permeable,solubility_score,aggregation_risk,source,publication_year,notes
+SOTORASIB,30,0.91,True,0.68,very_low,FDA Approved,2021,Small molecule covalent inhibitor - clinical gold standard
+ADAGRASIB,40,0.89,True,0.65,very_low,FDA Approved,2023,Small molecule covalent inhibitor - slightly weaker binding
+MRTX1133,35,0.90,True,0.70,very_low,In Development,2024,Next-gen KRAS G12C inhibitor
+KRAS_PEPTIDE_V1,450,0.58,True,0.55,medium,Literature,2022,First peptide attempt - much weaker than small molecules
+KRAS_PEPTIDE_V2,280,0.72,True,0.62,low,Literature,2023,Improved peptide - still 8x weaker than sotorasib
+KRAS_CYCLIC_A,200,0.80,True,0.68,low,Internal,2024,Cyclic scaffold - promising but incomplete
+KRAS_CYCLIC_B,165,0.83,True,0.71,very_low,Internal,2024,Extended loop variant - best peptide to date
+NONCOVALENT_PEPTIDE,350,0.75,True,0.66,medium,Theoretical,2024,Non-covalent inhibitor - explores alternate mechanism
+RANDOM_BASELINE,800,0.45,False,0.40,high,Control,2024,Random sequence - negative control

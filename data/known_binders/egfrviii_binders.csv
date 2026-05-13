@@ -1,0 +1,10 @@
+sequence,binding_affinity_nM,stability_score,bbb_permeable,solubility_score,aggregation_risk,source,publication_year,notes
+MVLDGEQG,120,0.85,True,0.75,low,Aly Dhedhi et al.,2025,Angiopep-2/GE11 fusion - published baseline
+MVAQWKEQ,89,0.91,True,0.82,very_low,Aly Dhedhi et al.,2025,Optimized cyclized variant - best so far
+MVAGGKEQ,250,0.72,False,0.68,medium,Literature,2020,Natural peptide - poor BBB penetration
+ERLOTINIB_BOUND,110,0.88,False,0.55,low,PDB,1995,Small molecule inhibitor - non-peptide
+GEFITINIB_BOUND,95,0.86,False,0.50,low,PDB,2000,Small molecule inhibitor - non-peptide
+MVLDXXXX,450,0.62,False,0.40,high,Theoretical,2024,Random sequence - poor baseline
+MVLDGEQG_RETRO,180,0.78,True,0.70,medium,Aly Dhedhi et al.,2025,Retro-enantio variant - less stable than natural
+CYCLIC_GE11,75,0.93,True,0.85,very_low,Aly Dhedhi et al.,2025,Cyclized with terminal capping - top candidate
+MVLD_LINKER_ANGIOPEP,65,0.89,True,0.88,very_low,Internal,2025,Extended linker - predicted to improve accessibility

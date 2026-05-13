@@ -1,0 +1,10 @@
+sequence,binding_affinity_nM,stability_score,bbb_permeable,solubility_score,aggregation_risk,source,publication_year,notes
+ATEZOLIZUMAB,50,0.89,False,0.92,very_low,FDA Approved,2016,Monoclonal antibody - gold standard
+DURVALUMAB,48,0.88,False,0.91,very_low,FDA Approved,2017,Monoclonal antibody - tight binder
+PEMBROLIZUMAB,55,0.87,False,0.88,very_low,FDA Approved,2015,Monoclonal antibody - clinical reference
+PD_L1_PEPTIDE_V1,280,0.65,True,0.72,medium,Literature,2018,Short peptide - loses affinity vs mAb
+PD_L1_PEPTIDE_V2,150,0.78,True,0.79,low,Literature,2021,Improved peptide - still 3x worse than mAb
+SMALL_MOL_BMS,120,0.72,True,0.65,low,Literature,2019,Small molecule inhibitor - less specificity
+CYCLIC_PD_L1_A,95,0.82,True,0.81,very_low,Internal,2024,Cyclized peptide - approaching mAb affinity
+CYCLIC_PD_L1_B,110,0.80,True,0.78,low,Internal,2024,Variant with extended loop region
+RANDOM_BASELINE,500,0.55,False,0.45,high,Control,2024,Random sequence - negative control

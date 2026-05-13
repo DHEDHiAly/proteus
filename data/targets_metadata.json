@@ -1,0 +1,49 @@
+{
+  "targets": [
+    {
+      "name": "EGFRvIII",
+      "pdb_id": "3gp1",
+      "full_name": "Epidermal Growth Factor Receptor variant III (Glioblastoma)",
+      "binding_site_residues": [87, 92, 98, 105, 112, 119],
+      "binding_pocket_center": [45.2, 32.1, 28.5],
+      "native_ligand": "inhibitor_erlotinib",
+      "known_ic50_nM": 120,
+      "cancer_type": "glioblastoma",
+      "cancer_prevalence": "~30% of GBM cases",
+      "clinical_relevance": "Constitutively active truncated EGFR. No wildtype ligand binding. Known inhibitors: erlotinib, gefitinib, lapatinib. Peptide targeting preferred due to specificity.",
+      "literature_references": ["Aly Dhedhi et al., 2025", "Wikstrand et al., 1995"],
+      "difficulty_score": 7,
+      "notes": "Direct extension of Aly's published BBB-penetrant peptide work. Angiopep-2/GE11 fusion candidates available for benchmarking."
+    },
+    {
+      "name": "PD-L1",
+      "pdb_id": "4zqk",
+      "full_name": "Programmed Death Ligand 1 (Immune Checkpoint)",
+      "binding_site_residues": [45, 50, 58, 65, 72, 80],
+      "binding_pocket_center": [12.3, 45.1, 65.2],
+      "native_ligand": "pembrolizumab_fab",
+      "known_ic50_nM": 50,
+      "cancer_type": "multiple solid tumors",
+      "cancer_prevalence": ">80% of cancers express PD-L1",
+      "clinical_relevance": "Immune checkpoint. Blocking PD-L1:PD-1 interaction restores T-cell immunity. Combined with radiation therapy shows synergy. Small-molecule inhibitors (atezolizumab, durvalumab) approved; peptide binders could offer better tissue penetration.",
+      "literature_references": ["Zak et al. Nature 2015", "Dong et al. Nature Rev. 2002"],
+      "difficulty_score": 5,
+      "notes": "Well-characterized, many known binders available for validation. Clinically urgent target for radiation oncology."
+    },
+    {
+      "name": "KRAS_G12C",
+      "pdb_id": "6OIM",
+      "full_name": "KRAS G12C (Mutant Oncogene, Drug-Resistant)",
+      "binding_site_residues": [12, 13, 16, 25, 30, 35, 39],
+      "binding_pocket_center": [20.1, 15.3, 10.2],
+      "native_ligand": "sotorasib",
+      "known_ic50_nM": 30,
+      "cancer_type": "lung, pancreatic, colorectal cancer",
+      "cancer_prevalence": "~13% of lung cancers, ~3% of pancreatic, ~3% of CRC",
+      "clinical_relevance": "Most common oncogenic RAS mutation. Historically undruggable — 'you can't drug RAS'. Recent breakthroughs (sotorasib 2021) opened the field. Peptide-based inhibitors could target conformational dynamics that small molecules miss.",
+      "literature_references": ["Ostrem et al. Nature 2013", "Canon et al. Nature 2019"],
+      "difficulty_score": 9,
+      "notes": "Hardest target. Conformationally dynamic. Excellent test of Proteus's ability to explore multi-basin fitness landscape. Publishable if solved."
+    }
+  ]
+}

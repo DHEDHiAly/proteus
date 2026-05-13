@@ -1,0 +1,97 @@
+# Proteus MCMC Configuration
+# Default parameters for all protein design runs
+
+mcmc:
+  # Core MCMC settings
+  num_chains: 5
+  temperatures: [0.5, 1.0, 2.0, 5.0, 10.0]  # Temperature ladder for parallel tempering
+  steps_per_chain: 1000  # Total MCMC steps per chain
+  swap_interval: 50  # Swap adjacent chains every N steps
+  proposal_distribution: "esm_guided"  # esm_guided | random | block_replacement
+  acceptance_criterion: "metropolis_hastings"  # Only option for now
+  
+  # Transition operator probabilities
+  transition_ops:
+    point_substitution: 0.70  # Single amino acid replacement
+    esm_guided_substitution: 0.20  # ESM-2 informed replacement
+    block_replacement: 0.08  # Multi-residue motif swap
+    llm_jump: 0.02  # Occasional LLM-proposed radical mutation
+
+scoring:
+  # Objective function weights (sum to 1.0)
+  binding_weight: 0.50  # Primary objective - binding affinity
+  stability_weight: 0.25  # Protein folding stability
+  solubility_weight: 0.15  # Expression feasibility
+  bbb_weight: 0.10  # Blood-brain barrier penetration (for CNS targets)
+  
+  # Penalty terms
+  hydrophobicity_penalty: 0.05  # Penalize overly hydrophobic sequences
+  charge_penalty: 0.02  # Penalize extreme net charge
+  aggregation_penalty: 0.08  # Penalize aggregation-prone regions
+  
+  # Thresholds
+  min_stability_score: 0.6  # Reject sequences below this threshold
+  max_hydrophobicity: 0.65  # Reject if GRAVY > threshold
+  ideal_charge_range: [-3, 3]  # Net charge range
+
+convergence:
+  # Stopping criteria
+  autocorr_threshold: 1.0  # Integrated autocorrelation time (lower = more converged)
+  min_effective_samples: 100  # Minimum ESS across all chains
+  max_steps: 5000  # Hard limit even if not converged
+  patience: 100  # Stop if no improvement for N steps
+  
+  # Diagnostics
+  gelman_rubin_threshold: 1.05  # Potential scale reduction factor (multivariate convergence)
+  check_interval: 50  # Check convergence every N steps
+
+validation:
+  # Benchmark comparison
+  compare_to_known_binders: true
+  top_k_report: 10  # Report top 10 candidates
+  rank_by_score: true  # vs. novelty
+  
+  # Sequence properties to report
+  report_mutation_count: true  # Number of mutations from seed
+  report_sequence_entropy: true  # Shannon entropy
+  report_homology: true  # BLAST against known binders
+
+output:
+  # Result storage
+  save_all_trajectories: true  # Store all accepted + rejected steps
+  compression: "gzip"  # Compress trajectory files
+  export_format: ["json", "csv"]  # Export formats
+  
+  # Visualization
+  plot_energy_landscape: true
+  plot_mutation_trace: true
+  create_structure_pdb: true  # Export top 3 designs as PDB files
+
+resources:
+  # Computational
+  max_parallel_chains: 5
+  use_gpu: true  # For ESMFold/scoring if available
+  timeout_minutes: 120  # Abort if run takes >2 hours
+  
+  # Integration with external services
+  esm_cache_dir: "./data/models/esm2_embeddings_cache/"
+  scorer_model_path: "./data/models/scorer_weights.pt"
+  esm_fold_api: "https://api.esmatlas.com"  # Free Meta API
+
+# Target-specific overrides (optional)
+target_overrides:
+  EGFRvIII:
+    bbb_weight: 0.15  # Increase BBB importance for CNS target
+    steps_per_chain: 1500  # Extra steps for complex pocket
+    stability_weight: 0.30  # Higher importance
+  
+  PD_L1:
+    binding_weight: 0.60  # Harder to achieve tight binding
+    solubility_weight: 0.20  # Needs high solubility for IV
+    steps_per_chain: 1000  # Standard
+  
+  KRAS_G12C:
+    binding_weight: 0.70  # Extremely challenging target
+    steps_per_chain: 2000  # Double steps
+    temperatures: [0.2, 0.5, 1.0, 2.0, 5.0, 10.0]  # Finer temperature ladder
+    num_chains: 6  # Extra chain for this hard problem

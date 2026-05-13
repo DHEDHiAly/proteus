@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proteus — MCMC Protein Design Platform</title>
+  <meta name="description" content="Production-grade protein design platform combining Markov Chain Monte Carlo with machine learning for oncology therapeutics discovery.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, sans-serif; color: #1a1a2e; background: #f8fafc; line-height: 1.6; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    nav { background: rgba(255,255,255,.8); backdrop-filter: blur(12px); border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; }
+    nav .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+    nav .logo { font-size: 1.5rem; font-weight: 800; color: #1e40af; text-decoration: none; letter-spacing: -.02em; }
+    nav .logo span { color: #3b82f6; }
+    nav a { text-decoration: none; color: #475569; font-size: .875rem; font-weight: 500; margin-left: 24px; transition: color .15s; }
+    nav a:hover { color: #1e40af; }
+    nav .btn { background: #1e40af; color: #fff !important; padding: 8px 20px; border-radius: 8px; font-weight: 600; }
+    nav .btn:hover { background: #1e3a8a; }
+
+    .hero { padding: 100px 0 80px; text-align: center; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: #fff; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; inset: 0; background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); opacity: .4; }
+    .hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; position: relative; }
+    .hero h1 span { background: linear-gradient(135deg, #93c5fd, #bfdbfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 1.2rem; max-width: 640px; margin: 20px auto 0; opacity: .85; font-weight: 300; position: relative; }
+    .hero .badge { display: inline-block; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.2); padding: 6px 16px; border-radius: 100px; font-size: .8rem; font-weight: 500; margin-top: 24px; backdrop-filter: blur(4px); position: relative; }
+    .hero-btns { margin-top: 40px; display: flex; gap: 16px; justify-content: center; position: relative; flex-wrap: wrap; }
+    .hero-btns .btn-primary { background: #fff; color: #1e40af; padding: 14px 32px; border-radius: 12px; font-weight: 600; text-decoration: none; font-size: 1rem; transition: all .15s; }
+    .hero-btns .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .hero-btns .btn-secondary { background: rgba(255,255,255,.1); color: #fff; padding: 14px 32px; border-radius: 12px; font-weight: 500; text-decoration: none; font-size: 1rem; border: 1px solid rgba(255,255,255,.2); transition: all .15s; }
+    .hero-btns .btn-secondary:hover { background: rgba(255,255,255,.2); }
+
+    section { padding: 80px 0; }
+    section h2 { font-size: 2rem; font-weight: 700; text-align: center; margin-bottom: 16px; letter-spacing: -.02em; }
+    section .subtitle { text-align: center; color: #64748b; max-width: 600px; margin: 0 auto 48px; font-size: 1.05rem; }
+
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+    .feature-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; transition: all .2s; }
+    .feature-card:hover { border-color: #93c5fd; box-shadow: 0 4px 20px rgba(59,130,246,.08); transform: translateY(-2px); }
+    .feature-card .icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-bottom: 16px; }
+    .feature-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+    .feature-card p { color: #64748b; font-size: .9rem; line-height: 1.7; }
+
+    .targets-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+    .target-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; }
+    .target-card .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .target-card h3 { font-size: 1.1rem; font-weight: 600; }
+    .target-card .pdb { font-family: monospace; font-size: .8rem; color: #3b82f6; background: #eff6ff; padding: 2px 10px; border-radius: 6px; }
+    .target-card .stat { display: flex; justify-content: space-between; padding: 6px 0; font-size: .875rem; border-bottom: 1px solid #f1f5f9; }
+    .target-card .stat:last-child { border-bottom: none; }
+    .target-card .stat-label { color: #64748b; }
+    .target-card .stat-value { font-weight: 500; }
+    .target-card .difficulty { display: inline-block; padding: 2px 10px; border-radius: 100px; font-size: .75rem; font-weight: 600; }
+    .difficulty-hard { background: #fef2f2; color: #dc2626; }
+    .difficulty-medium { background: #fffbeb; color: #d97706; }
+    .difficulty-easy { background: #f0fdf4; color: #16a34a; }
+
+    .arch { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 48px; text-align: center; }
+    .arch pre { font-size: .8rem; line-height: 1.8; color: #475569; overflow-x: auto; }
+
+    .code-block { background: #0f172a; border-radius: 12px; padding: 24px; color: #e2e8f0; font-family: 'SF Mono', 'Fira Code', monospace; font-size: .85rem; line-height: 1.8; overflow-x: auto; }
+    .code-block .comment { color: #64748b; }
+    .code-block .keyword { color: #38bdf8; }
+    .code-block .string { color: #a3e635; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: center; }
+    .stat-card .number { font-size: 2rem; font-weight: 800; color: #1e40af; }
+    .stat-card .label { font-size: .8rem; color: #64748b; margin-top: 4px; }
+
+    footer { background: #0f172a; color: #94a3b8; padding: 48px 0; text-align: center; font-size: .875rem; }
+    footer a { color: #3b82f6; text-decoration: none; }
+    footer .disclaimer { max-width: 600px; margin: 16px auto 0; font-size: .75rem; opacity: .6; }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.2rem; }
+      .hero p { font-size: 1rem; }
+      nav .nav-links { display: none; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      section { padding: 48px 0; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="/" class="logo">Proteus<span>.</span></a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#targets">Targets</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#architecture">Architecture</a>
+        <a href="https://github.com" class="btn" target="_blank">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Design <span>Novel Proteins</span><br>with Markov Chain Monte Carlo</h1>
+      <p>A production-grade platform combining MCMC with machine learning to discover novel protein therapeutics targeting oncology targets.</p>
+      <div class="badge">FOR RESEARCH USE ONLY &middot; Not a medical device</div>
+      <div class="hero-btns">
+        <a href="#quickstart" class="btn-primary">Get Started</a>
+        <a href="#features" class="btn-secondary">Learn More</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="container">
+      <h2>Everything you need for protein design</h2>
+      <p class="subtitle">From parallel MCMC sampling to 3D structure visualization — Proteus provides a complete computational protein design pipeline.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="icon" style="background:#eff6ff;color:#2563eb;">⚡</div>
+          <h3>Parallel MCMC Engine</h3>
+          <p>5-chain parallel tempering with Metropolis-Hastings acceptance. Configurable temperatures from 0.5 to 10.0 for optimal exploration-exploitation balance.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="background:#f0fdf4;color:#16a34a;">🧬</div>
+          <h3>ESM-2 Guided Proposals</h3>
+          <p>Biologically plausible mutations guided by ESM-2 protein language model embeddings. Point substitutions, block replacements, and LLM jumps.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="background:#fef2f2;color:#dc2626;">🎯</div>
+          <h3>Energy-Based Scoring</h3>
+          <p>Multi-objective energy function: binding affinity, stability, solubility, BBB penetration. BLOSUM62-informed and customizable weights.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="background:#fffbeb;color:#d97706;">📊</div>
+          <h3>Real-Time Progress</h3>
+          <p>WebSocket streaming of chain energies, acceptance rates, and best candidates. Live Recharts visualizations update as MCMC runs.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="background:#f5f3ff;color:#7c3aed;">🔬</div>
+          <h3>3D Structure Viewer</h3>
+          <p>Integrated PDBe Molstar viewer for interactive protein structure exploration. Designed mutations highlighted on the target protein.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon" style="background:#f0fdf4;color:#16a34a;">📋</div>
+          <h3>Regulatory Compliance</h3>
+          <p>Complete audit trail, RBAC (fellow/mentor/admin), data retention policies, dual-use research screening, and HIPAA-aligned logging.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="targets" style="background:#f1f5f9;">
+    <div class="container">
+      <h2>Oncology Targets</h2>
+      <p class="subtitle">Three clinically relevant cancer targets with known binders and validation benchmarks.</p>
+      <div class="targets-grid">
+        <div class="target-card">
+          <div class="header">
+            <h3>EGFRvIII</h3>
+            <span class="pdb">3GP1</span>
+          </div>
+          <p style="font-size:.85rem;color:#64748b;margin-bottom:12px;">Epidermal Growth Factor Receptor variant III</p>
+          <div class="stat"><span class="stat-label">Cancer</span><span class="stat-value">Glioblastoma</span></div>
+          <div class="stat"><span class="stat-label">Known IC₅₀</span><span class="stat-value">120 nM</span></div>
+          <div class="stat"><span class="stat-label">Difficulty</span><span class="stat-value"><span class="difficulty difficulty-hard">7/10 — Hard</span></span></div>
+          <div class="stat"><span class="stat-label">Prevalence</span><span class="stat-value">~30% of GBM</span></div>
+        </div>
+        <div class="target-card">
+          <div class="header">
+            <h3>PD-L1</h3>
+            <span class="pdb">4ZQK</span>
+          </div>
+          <p style="font-size:.85rem;color:#64748b;margin-bottom:12px;">Programmed Death Ligand 1 (Immune Checkpoint)</p>
+          <div class="stat"><span class="stat-label">Cancer</span><span class="stat-value">Multiple Solid Tumors</span></div>
+          <div class="stat"><span class="stat-label">Known IC₅₀</span><span class="stat-value">50 nM</span></div>
+          <div class="stat"><span class="stat-label">Difficulty</span><span class="stat-value"><span class="difficulty difficulty-medium">5/10 — Medium</span></span></div>
+          <div class="stat"><span class="stat-label">Prevalence</span><span class="stat-value">&gt;80% of cancers</span></div>
+        </div>
+        <div class="target-card">
+          <div class="header">
+            <h3>KRAS G12C</h3>
+            <span class="pdb">6OIM</span>
+          </div>
+          <p style="font-size:.85rem;color:#64748b;margin-bottom:12px;">Mutant Oncogene (Historically Undruggable)</p>
+          <div class="stat"><span class="stat-label">Cancer</span><span class="stat-value">Lung, Pancreatic, CRC</span></div>
+          <div class="stat"><span class="stat-label">Known IC₅₀</span><span class="stat-value">30 nM</span></div>
+          <div class="stat"><span class="stat-label">Difficulty</span><span class="stat-value"><span class="difficulty difficulty-hard">9/10 — Very Hard</span></span></div>
+          <div class="stat"><span class="stat-label">Prevalence</span><span class="stat-value">~13% of lung cancers</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <div class="container">
+      <h2>Get Started in Minutes</h2>
+      <p class="subtitle">Local development with Docker Compose or manual setup.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px;">
+        <div>
+          <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px;">🐳 Docker (Recommended)</h3>
+          <div class="code-block">
+            <span class="comment"># Start the full stack</span><br>
+            docker-compose up --build<br><br>
+            <span class="comment"># Frontend:  http://localhost:5173</span><br>
+            <span class="comment"># API:       http://localhost:8000</span><br>
+            <span class="comment"># Docs:      http://localhost:8000/docs</span>
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px;">⚡ Manual Setup</h3>
+          <div class="code-block">
+            <span class="comment"># Backend</span><br>
+            <span class="keyword">cd</span> backend && python3 -m venv venv<br>
+            <span class="keyword">source</span> venv/bin/activate<br>
+            pip install -r requirements.txt<br>
+            uvicorn app.main:app --reload<br><br>
+            <span class="comment"># Frontend</span><br>
+            <span class="keyword">cd</span> frontend && npm install<br>
+            npm run dev
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:24px;">
+        <h3 style="font-size:1rem;font-weight:600;margin-bottom:12px;">📊 Run Your First Design</h3>
+        <div class="code-block">
+          <span class="comment"># Register a user</span><br>
+          curl -X POST http://localhost:8000/api/v1/auth/register \<br>
+            &nbsp;&nbsp;-H <span class="string">"Content-Type: application/json"</span> \<br>
+            &nbsp;&nbsp;-d <span class="string">'{"email":"user@example.com","password":"securepass","full_name":"Researcher"}'</span><br><br>
+          <span class="comment"># Start a design run against EGFRvIII</span><br>
+          curl -X POST http://localhost:8000/api/v1/runs \<br>
+            &nbsp;&nbsp;-H <span class="string">"Authorization: Bearer &lt;token&gt;"</span> \<br>
+            &nbsp;&nbsp;-d <span class="string">'{"target_name":"EGFRvIII","num_chains":5,"steps_per_chain":1000}'</span><br><br>
+          <span class="comment"># Watch progress via WebSocket</span><br>
+          wscat -c ws://localhost:8000/api/v1/runs/&lt;run_id&gt;/ws
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture" style="background:#f1f5f9;">
+    <div class="container">
+      <h2>Architecture</h2>
+      <p class="subtitle">Scalable, containerized microservices architecture.</p>
+      <div class="arch">
+        <pre>
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│  React SPA      │────▶│  FastAPI (Uvicorn)│────▶│  PostgreSQL │
+│  (Vite + Recharts│    │  + WebSocket      │     │  + Redis    │
+│   + PDBe Molstar)│◀────│  + MCMC Engine   │◀────│             │
+└─────────────────┘     └──────────────────┘     └─────────────┘
+         │                       │                       │
+         │                       │                       │
+    TailwindCSS              NumPy/SciPy            Audit Logs
+    Responsive UI            ESM-2 Embeddings       RBAC Store
+    Energy Charts            Metropolis-Hastings    Run History
+    3D Structure             Parallel Tempering     Compliance
+        </pre>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:32px;">
+        <div class="stat-card"><div class="number">68</div><div class="label">Source Files</div></div>
+        <div class="stat-card"><div class="number">5,500</div><div class="label">Lines of Code</div></div>
+        <div class="stat-card"><div class="number">28</div><div class="label">Unit Tests</div></div>
+        <div class="stat-card"><div class="number">3</div><div class="label">Cancer Targets</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container" style="text-align:center;">
+      <h2>Ready to design?</h2>
+      <p class="subtitle">Built for the Lumos Fellowship. Contributions welcome.</p>
+      <a href="https://github.com" class="hero-btns" style="display:inline-flex;margin-top:16px;">
+        <span class="btn-primary" style="display:inline-block;">View on GitHub</span>
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Proteus — MCMC Protein Design Platform</p>
+      <p style="margin-top:8px;">
+        <a href="https://github.com">GitHub</a> &middot;
+        <a href="http://localhost:8000/docs">API Docs</a> &middot;
+        <a href="http://localhost:5173">Live Demo</a>
+      </p>
+      <p class="disclaimer">
+        FOR RESEARCH USE ONLY. Not a medical device. Designed protein sequences are computational
+        predictions only and must undergo wet-lab validation. This tool is not intended for
+        diagnostic or therapeutic use. Built for the Lumos Fellowship.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
