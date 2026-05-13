@@ -10,68 +10,43 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    try {
-      await login(email, password)
-      navigate('/dashboard')
-    } catch {}
+    try { await login(email, password); navigate('/agent') }
+    catch {}
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-proteus-700">Proteus</h1>
-          <p className="text-gray-500 mt-2">MCMC Protein Design Platform</p>
+          <div className="w-12 h-12 border border-white/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <span className="text-xl font-bold">P</span>
+          </div>
+          <h1 className="text-lg font-bold">Proteus</h1>
+          <p className="text-gray-500 text-xs mt-1">Sign in to continue</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-          <h2 className="text-2xl font-semibold mb-6">Sign In</h2>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="bg-[#111] border border-[#222] rounded-xl p-6">
+          {error && <div className="bg-white/5 border border-white/10 text-white px-3 py-2 rounded-lg mb-4 text-xs">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="label">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); clearError() }}
-                className="input-field"
-                placeholder="you@example.com"
-                required
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                className="input-field" placeholder="you@example.com" required />
             </div>
             <div>
               <label className="label">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); clearError() }}
-                className="input-field"
-                placeholder="••••••••"
-                required
-              />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                className="input-field" placeholder="••••••••" required />
             </div>
             <button type="submit" className="btn-primary w-full" disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <span>Don't have an account? </span>
-            <Link to="/register" className="text-proteus-600 hover:text-proteus-700 font-medium">
-              Register
-            </Link>
-          </div>
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-            <p className="font-medium mb-1">Demo Accounts:</p>
-            <p>Fellow: fellow@proteus.dev / password123</p>
-            <p>Admin: admin@proteus.dev / password123</p>
+          <div className="mt-4 text-center text-xs text-gray-500">
+            <span>No account? </span>
+            <Link to="/register" className="text-white hover:underline">Register</Link>
           </div>
         </div>
-        <p className="text-center text-xs text-gray-400 mt-6">
-          FOR RESEARCH USE ONLY. Not a medical device.
-        </p>
+        <p className="text-center text-[10px] text-gray-600 mt-4">FOR RESEARCH USE ONLY</p>
       </div>
     </div>
   )

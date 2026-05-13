@@ -14,13 +14,30 @@ export interface AgentMessage {
   content: string
   timestamp?: string
   data?: {
-    status?: 'running' | 'complete' | 'error'
+    status?: 'running' | 'round_complete' | 'complete' | 'error'
+    phase?: 'research' | 'generate' | 'fold' | 'evaluate'
+    round?: number
     target?: string
     sequence?: string
     pdb_id?: string
     mutations?: { position: number; from: string; to: string }[]
     scores?: Record<string, number>
+    fold?: { plddt: number; ptm: number; predicted_aligned_error: number }
+    is_best?: boolean
+    rounds?: IterationRound[]
+    total_time?: number
   }
+}
+
+export interface IterationRound {
+  round: number
+  sequence: string
+  binding_score: number
+  stability_score: number
+  solubility_score: number
+  total_energy: number
+  fold_plddt: number
+  is_best: boolean
 }
 
 export interface AgentRunRequest {
@@ -36,5 +53,7 @@ export interface AgentRunResponse {
   candidate_scores?: Record<string, number>
   pdb_id?: string
   mutations?: { position: number; from: string; to: string }[]
+  rounds?: number[]
+  total_time?: number
   disclaimer: string
 }

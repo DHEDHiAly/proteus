@@ -14,8 +14,17 @@ agent = ProteinDesignAgent()
 
 @router.post("/greet")
 async def greet(current_user: User = Depends(get_current_user)):
-    reply = agent._greet()
-    return {"reply": reply, "disclaimer": agent._greet().split("\n\n")[-1]}
+    reply = (
+        "I am Proteus, your autonomous protein design agent.\n\n"
+        "I work in iterative cycles:\n"
+        "1. **Research** — Analyze target protein structure and literature\n"
+        "2. **Generate** — Run MCMC to produce candidate sequences\n"
+        "3. **Fold** — Predict 3D structure of candidates\n"
+        "4. **Evaluate** — Score binding, stability, solubility\n"
+        "5. **Iterate** — Use best candidate as seed for next round\n\n"
+        "Enter a message to begin."
+    )
+    return {"reply": reply}
 
 
 @router.post("/design", response_model=AgentRunResponse)

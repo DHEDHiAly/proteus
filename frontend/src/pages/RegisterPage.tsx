@@ -12,84 +12,40 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    try {
-      await register(email, password, fullName)
-      setSuccess(true)
-      setTimeout(() => navigate('/login'), 3000)
-    } catch {}
+    try { await register(email, password, fullName); setSuccess(true); setTimeout(() => navigate('/login'), 2000) }
+    catch {}
   }
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8 max-w-md text-center">
-          <div className="text-4xl mb-4">✓</div>
-          <h2 className="text-2xl font-semibold mb-2">Registration Successful</h2>
-          <p className="text-gray-500">You can now sign in with your credentials.</p>
-          <Link to="/login" className="btn-primary inline-block mt-6">Go to Sign In</Link>
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="bg-[#111] border border-[#222] rounded-xl p-8 max-w-sm text-center">
+          <div className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">✓</div>
+          <h2 className="font-bold mb-1">Registered</h2>
+          <p className="text-xs text-gray-500">Redirecting to sign in...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-proteus-700">Proteus</h1>
-          <p className="text-gray-500 mt-2">Create your account</p>
+    <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <h1 className="text-lg font-bold">Create Account</h1>
+          <p className="text-gray-500 text-xs mt-1">Join Proteus</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-          <h2 className="text-2xl font-semibold mb-6">Register</h2>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="label">Full Name</label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => { setFullName(e.target.value); clearError() }}
-                className="input-field"
-                placeholder="Jane Doe"
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); clearError() }}
-                className="input-field"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); clearError() }}
-                className="input-field"
-                placeholder="Min. 8 characters"
-                minLength={8}
-                required
-              />
-            </div>
-            <button type="submit" className="btn-primary w-full" disabled={isLoading}>
-              {isLoading ? 'Creating account...' : 'Create Account'}
-            </button>
+        <div className="bg-[#111] border border-[#222] rounded-xl p-6">
+          {error && <div className="bg-white/5 border border-white/10 text-white px-3 py-2 rounded-lg mb-4 text-xs">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div><label className="label">Full Name</label><input type="text" value={fullName} onChange={(e) => { setFullName(e.target.value); clearError() }} className="input-field" required /></div>
+            <div><label className="label">Email</label><input type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearError() }} className="input-field" required /></div>
+            <div><label className="label">Password</label><input type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearError() }} className="input-field" minLength={8} required /></div>
+            <button type="submit" className="btn-primary w-full" disabled={isLoading}>{isLoading ? 'Creating...' : 'Create Account'}</button>
           </form>
-          <div className="mt-6 text-center text-sm text-gray-500">
+          <div className="mt-4 text-center text-xs text-gray-500">
             <span>Already have an account? </span>
-            <Link to="/login" className="text-proteus-600 hover:text-proteus-700 font-medium">
-              Sign In
-            </Link>
+            <Link to="/login" className="text-white hover:underline">Sign In</Link>
           </div>
         </div>
       </div>
