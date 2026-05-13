@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+data/models/esm2_embeddings_cache/*
+!data/models/esm2_embeddings_cache/.gitkeep
+data/targets/*
+!data/targets/.gitkeep
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
