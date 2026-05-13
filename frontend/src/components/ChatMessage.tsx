@@ -15,9 +15,17 @@ export default function ChatMessage({ message, onStructureClick }: Props) {
       <div className={`${isAgent ? 'max-w-[88%]' : 'max-w-[75%]'}`}>
         {isAgent && !d?.status && (
           <div className="flex items-center space-x-2 mb-1.5">
-            <div className="w-5 h-5 rounded border border-white/20 flex items-center justify-center">
-              <span className="text-[9px] font-bold">P</span>
-            </div>
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4">
+              <defs><linearGradient id="cl" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#fff"/><stop offset="50%" stop-color="#666"/><stop offset="100%" stop-color="#fff"/>
+              </linearGradient></defs>
+              <g stroke="url(#cl)" strokeWidth="3" strokeLinecap="round" fill="none">
+                <path d="M30 15 Q50 25 70 15 Q50 5 30 15" opacity=".9"/>
+                <path d="M30 35 Q50 45 70 35" opacity=".7"/>
+                <line x1="30" y1="15" x2="30" y2="35" opacity=".6"/>
+                <line x1="70" y1="15" x2="70" y2="35" opacity=".6"/>
+              </g>
+            </svg>
             <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Proteus</span>
           </div>
         )}
