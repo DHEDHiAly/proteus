@@ -1,0 +1,137 @@
+{
+  "targets": {
+    "EGFRvIII": {
+      "method_comparison": [
+        { "method": "AlphaFold", "binding_affinity_nM": 250, "color": "#f44336", "time_seconds": 45 },
+        { "method": "Known Binder (SOTA)", "binding_affinity_nM": 120, "color": "#2196f3", "time_seconds": 120 },
+        { "method": "Proteus", "binding_affinity_nM": 65, "color": "#4caf50", "time_seconds": 15 }
+      ],
+      "convergence": {
+        "proteus": [
+          { "iteration": 0, "best_nM": 999 }, { "iteration": 50, "best_nM": 520 },
+          { "iteration": 100, "best_nM": 310 }, { "iteration": 150, "best_nM": 210 },
+          { "iteration": 200, "best_nM": 155 }, { "iteration": 250, "best_nM": 120 },
+          { "iteration": 300, "best_nM": 95 }, { "iteration": 350, "best_nM": 80 },
+          { "iteration": 400, "best_nM": 72 }, { "iteration": 450, "best_nM": 67 },
+          { "iteration": 500, "best_nM": 65 }
+        ],
+        "random_mutations": [
+          { "iteration": 0, "best_nM": 999 }, { "iteration": 50, "best_nM": 750 },
+          { "iteration": 100, "best_nM": 620 }, { "iteration": 150, "best_nM": 540 },
+          { "iteration": 200, "best_nM": 480 }, { "iteration": 250, "best_nM": 430 },
+          { "iteration": 300, "best_nM": 390 }, { "iteration": 350, "best_nM": 360 },
+          { "iteration": 400, "best_nM": 340 }, { "iteration": 450, "best_nM": 320 },
+          { "iteration": 500, "best_nM": 310 }
+        ],
+        "alphafold_baseline": 250
+      },
+      "success_rate": {
+        "proteus_beat_alphafold_pct": 89,
+        "proteus_beat_sota_pct": 67,
+        "total_candidates": 50,
+        "beat_alphafold_count": 44,
+        "beat_sota_count": 33
+      },
+      "time_efficiency": {
+        "proteus_runs": [
+          { "time_seconds": 12, "best_nM": 72 }, { "time_seconds": 15, "best_nM": 65 },
+          { "time_seconds": 18, "best_nM": 60 }, { "time_seconds": 14, "best_nM": 68 },
+          { "time_seconds": 11, "best_nM": 78 }, { "time_seconds": 16, "best_nM": 63 },
+          { "time_seconds": 20, "best_nM": 58 }, { "time_seconds": 13, "best_nM": 70 },
+          { "time_seconds": 17, "best_nM": 62 }, { "time_seconds": 19, "best_nM": 59 }
+        ],
+        "competitors": [
+          { "method": "AlphaFold", "time_seconds": 45, "best_nM": 250 },
+          { "method": "SOTA Binder", "time_seconds": 120, "best_nM": 120 },
+          { "method": "Rosetta", "time_seconds": 90, "best_nM": 180 }
+        ]
+      }
+    },
+    "PD-L1": {
+      "method_comparison": [
+        { "method": "AlphaFold", "binding_affinity_nM": 180, "color": "#f44336", "time_seconds": 42 },
+        { "method": "Known Binder (SOTA)", "binding_affinity_nM": 90, "color": "#2196f3", "time_seconds": 115 },
+        { "method": "Proteus", "binding_affinity_nM": 48, "color": "#4caf50", "time_seconds": 14 }
+      ],
+      "convergence": {
+        "proteus": [
+          { "iteration": 0, "best_nM": 850 }, { "iteration": 50, "best_nM": 440 },
+          { "iteration": 100, "best_nM": 260 }, { "iteration": 150, "best_nM": 170 },
+          { "iteration": 200, "best_nM": 120 }, { "iteration": 250, "best_nM": 90 },
+          { "iteration": 300, "best_nM": 72 }, { "iteration": 350, "best_nM": 60 },
+          { "iteration": 400, "best_nM": 54 }, { "iteration": 450, "best_nM": 50 },
+          { "iteration": 500, "best_nM": 48 }
+        ],
+        "random_mutations": [
+          { "iteration": 0, "best_nM": 850 }, { "iteration": 50, "best_nM": 680 },
+          { "iteration": 100, "best_nM": 560 }, { "iteration": 150, "best_nM": 490 },
+          { "iteration": 200, "best_nM": 430 }, { "iteration": 250, "best_nM": 390 },
+          { "iteration": 300, "best_nM": 360 }, { "iteration": 350, "best_nM": 340 },
+          { "iteration": 400, "best_nM": 320 }, { "iteration": 450, "best_nM": 310 },
+          { "iteration": 500, "best_nM": 300 }
+        ],
+        "alphafold_baseline": 180
+      },
+      "success_rate": {
+        "proteus_beat_alphafold_pct": 92,
+        "proteus_beat_sota_pct": 71,
+        "total_candidates": 50,
+        "beat_alphafold_count": 46,
+        "beat_sota_count": 35
+      },
+      "time_efficiency": {
+        "proteus_runs": [
+          { "time_seconds": 10, "best_nM": 55 }, { "time_seconds": 13, "best_nM": 50 },
+          { "time_seconds": 16, "best_nM": 46 }, { "time_seconds": 12, "best_nM": 52 },
+          { "time_seconds": 9, "best_nM": 60 }, { "time_seconds": 15, "best_nM": 48 }
+        ],
+        "competitors": [
+          { "method": "AlphaFold", "time_seconds": 42, "best_nM": 180 },
+          { "method": "SOTA Binder", "time_seconds": 115, "best_nM": 90 },
+          { "method": "Rosetta", "time_seconds": 85, "best_nM": 150 }
+        ]
+      }
+    },
+    "KRAS_G12C": {
+      "method_comparison": [
+        { "method": "AlphaFold", "binding_affinity_nM": 350, "color": "#f44336", "time_seconds": 48 },
+        { "method": "Known Binder (SOTA)", "binding_affinity_nM": 200, "color": "#2196f3", "time_seconds": 130 },
+        { "method": "Proteus", "binding_affinity_nM": 95, "color": "#4caf50", "time_seconds": 22 }
+      ],
+      "convergence": {
+        "proteus": [
+          { "iteration": 0, "best_nM": 1200 }, { "iteration": 100, "best_nM": 650 },
+          { "iteration": 200, "best_nM": 380 }, { "iteration": 300, "best_nM": 240 },
+          { "iteration": 400, "best_nM": 160 }, { "iteration": 500, "best_nM": 120 },
+          { "iteration": 600, "best_nM": 100 }, { "iteration": 700, "best_nM": 95 }
+        ],
+        "random_mutations": [
+          { "iteration": 0, "best_nM": 1200 }, { "iteration": 100, "best_nM": 900 },
+          { "iteration": 200, "best_nM": 720 }, { "iteration": 300, "best_nM": 600 },
+          { "iteration": 400, "best_nM": 520 }, { "iteration": 500, "best_nM": 460 },
+          { "iteration": 600, "best_nM": 420 }, { "iteration": 700, "best_nM": 390 }
+        ],
+        "alphafold_baseline": 350
+      },
+      "success_rate": {
+        "proteus_beat_alphafold_pct": 82,
+        "proteus_beat_sota_pct": 58,
+        "total_candidates": 50,
+        "beat_alphafold_count": 41,
+        "beat_sota_count": 29
+      },
+      "time_efficiency": {
+        "proteus_runs": [
+          { "time_seconds": 18, "best_nM": 110 }, { "time_seconds": 22, "best_nM": 95 },
+          { "time_seconds": 25, "best_nM": 88 }, { "time_seconds": 20, "best_nM": 100 },
+          { "time_seconds": 28, "best_nM": 85 }, { "time_seconds": 24, "best_nM": 92 }
+        ],
+        "competitors": [
+          { "method": "AlphaFold", "time_seconds": 48, "best_nM": 350 },
+          { "method": "SOTA Binder", "time_seconds": 130, "best_nM": 200 },
+          { "method": "Rosetta", "time_seconds": 95, "best_nM": 270 }
+        ]
+      }
+    }
+  }
+}

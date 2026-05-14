@@ -6,6 +6,8 @@ import FileUpload from '../components/FileUpload';
 import WidgetContainer from '../components/WidgetContainer';
 import ProgressWidget from '../components/ProgressWidget';
 import ResultsPanel from '../components/ResultsPanel';
+import DesignCycleSummary from '../components/DesignCycleSummary';
+import BenchmarkGraphs from '../components/BenchmarkGraphs';
 import CommandPalette, { useCommandPalette } from '../components/CommandPalette';
 
 type Candidate = {
@@ -31,6 +33,9 @@ export default function AgentPage() {
   const [showPatientForm, setShowPatientForm] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [hoveredTarget, setHoveredTarget] = useState<number | null>(null);
+  const [designRounds, setDesignRounds] = useState<any[]>([]);
+  const [designTime, setDesignTime] = useState(0);
+  const [designTarget, setDesignTarget] = useState('');
   const [comparisonMode, setComparisonMode] = useState(false);
   const [compareRun, setCompareRun] = useState<any>(null);
 
@@ -63,6 +68,32 @@ export default function AgentPage() {
       setMessages(res.data.messages);
       setIsRunning(false);
       if (res.data.run_id) setCurrentRunId(res.data.run_id);
+
+      const rounds = res.data.messages
+        ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+        .map((m) => m.data?.rounds)
+        .flat()
+        .filter(Boolean) || [];
+
+      const lastComplete = res.data.messages?.filter((m) => m.data?.status === 'complete').pop();
+      const totalTime = lastComplete?.data?.total_time || 0;
+
+      if (rounds.length > 0) {
+        const withMuts = res.data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
+        const roundData = rounds.map((r: any, i: number) => ({
+          round: i + 1,
+          sequence: r.sequence || '',
+          binding_score: r.binding_score || 0,
+          stability_score: r.stability_score || 0,
+          solubility_score: r.solubility_score || 0,
+          total_energy: r.total_energy || 0,
+          mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
+        }));
+        setDesignRounds(roundData);
+        setDesignTime(totalTime);
+        setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+      }
+
       if (res.data.candidate_sequence) {
         setCandidates((prev) => {
           const ranked = (res.data.messages
@@ -184,6 +215,16 @@ export default function AgentPage() {
               </div>
             </div>
           </div>
+          <div className="pt-6">
+            <div className="border-t border-[#1a1a1a] pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Proteus vs Other Methods</h2>
+                <span className="text-[9px] text-gray-600">Benchmark data across oncology targets</span>
+              </div>
+              <BenchmarkGraphs targetName="EGFRvIII" />
+            </div>
+          </div>
+
           <p className="text-center text-[10px] text-gray-600">FOR RESEARCH USE ONLY. Not a medical device.</p>
         </div>
       </div>
@@ -244,6 +285,11 @@ export default function AgentPage() {
         {sidebarOpen && (
           <aside className="w-[280px] flex-shrink-0 border-r border-[#1a1a1a] flex flex-col bg-[#050505]">
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              {designRounds.length > 0 && (
+                <div className="mb-3">
+                  <DesignCycleSummary rounds={designRounds} totalTime={designTime} targetName={designTarget} />
+                </div>
+              )}
               {messages.length === 0 && (
                 <div className="text-center py-16 text-gray-600">
                   <p className="text-xs">Ready to design</p>
