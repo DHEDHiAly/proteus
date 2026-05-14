@@ -4,6 +4,7 @@ import clsx from 'clsx'
 
 const navItems = [
   { path: '/agent', label: 'Workspace', icon: 'P' },
+  { path: '/benchmarks', label: 'Benchmarks', icon: '📊' },
   { path: '/dashboard', label: 'History', icon: '◈' },
 ]
 

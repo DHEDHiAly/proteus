@@ -294,8 +294,8 @@ export default function AgentPage() {
               <div className="h-full rounded-xl border border-[#1a1a1a] overflow-hidden bg-[#050505]">
                 {activeViewerPdb && (
                   <iframe
-                    src={`https://embed.rcsb.org/3d/${activeViewerPdb}?style=stick&color=spectrum&showControls=true`}
-                    style={{ width: '100%', height: '100%', border: 'none' }}
+                    src={`https://www.rcsb.org/3d-view/${activeViewerPdb}?style=stick&color=spectrum`}
+                    style={{ width: '100%', height: '100%', border: 'none', background: '#000' }}
                     title="Protein structure"
                   />
                 )}

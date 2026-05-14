@@ -11,6 +11,7 @@ import ComparePage from './pages/ComparePage'
 import ProfilePage from './pages/ProfilePage'
 import AdminPage from './pages/AdminPage'
 import AgentPage from './pages/AgentPage'
+import BenchmarksDashboard from './pages/BenchmarksDashboard'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -106,6 +107,16 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <AgentPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/benchmarks"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BenchmarksDashboard />
             </Layout>
           </ProtectedRoute>
         }
