@@ -85,7 +85,21 @@ section .subtitle{color:#555;font-size:.9rem;font-weight:300;max-width:520px;lin
 .problem-row.good{color:#ccc}
 .problem-row.good .icon{color:#4caf50}
 
-.how-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:32px}
+.social-proof{display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap;padding:40px 0;border-top:1px solid #0a0a0a;border-bottom:1px solid #0a0a0a;margin-top:32px}
+.social-item{display:flex;flex-direction:column;align-items:center;gap:6px}
+.social-item .org{font-size:.75rem;font-weight:700;color:#555;letter-spacing:.05em;text-transform:uppercase}
+.social-item .detail{font-size:.6rem;color:#333;text-align:center;max-width:160px;line-height:1.5}
+
+.biz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:32px}
+.biz-card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:24px}
+.biz-card .price{font-size:1.4rem;font-weight:800;letter-spacing:-.03em;margin-bottom:4px}
+.biz-card .tier{font-size:.6rem;color:#555;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
+.biz-card .desc{font-size:.75rem;color:#555;line-height:1.6}
+
+@media(max-width:768px){
+  .biz-grid{grid-template-columns:1fr}
+  .social-proof{gap:24px}
+}
 .how-step{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:24px;position:relative}
 .how-step .step-num{font-size:2rem;font-weight:800;color:#1a1a1a;line-height:1;margin-bottom:12px}
 .how-step h3{font-size:.85rem;font-weight:600;margin-bottom:8px}
@@ -176,7 +190,7 @@ Proteus
 <div class="nav-links">
 <a href="#problem">Problem</a>
 <a href="#benchmarks">Benchmarks</a>
-<a href="#features">Features</a>
+<a href="#business">Business</a>
 <a href="#about">About</a>
 <a href="mailto:aly@proteus.bio?subject=Proteus Early Access Request" class="btn">Request Access</a>
 </div>
@@ -200,7 +214,7 @@ Proteus
 <h1>Design better proteins<br><span>in seconds, not months</span></h1>
 <p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus does it in under two seconds — using MCMC-based design that outperforms AlphaFold on 3 oncology targets and beats Erlotinib on EGFRvIII binding affinity.</p>
 <div class="hero-btns">
-<a href="http://localhost:5173" class="primary">Launch Workspace</a>
+<a href="mailto:aly@proteus.bio?subject=Proteus Demo Request" class="primary" target="_blank">Request Demo</a>
 <a href="#benchmarks" class="secondary">View Benchmarks</a>
 </div>
 </div>
@@ -416,8 +430,12 @@ Proteus
 </div>
 </div>
 
-<div style="margin-top:32px;overflow-x:auto">
-<div class="section-label" style="margin-bottom:16px">Full Feature Comparison</div>
+<div style="margin-top:24px;padding:20px 24px;background:#050505;border:1px solid #111;border-radius:10px">
+<div class="section-label" style="margin-bottom:8px">Methodology Note</div>
+<p style="font-size:.72rem;color:#444;line-height:1.8;max-width:860px">
+Binding affinity values (nM) for Proteus candidates are estimated using a multi-objective energy oracle combining BLOSUM62 substitution log-odds, ESM-2 pseudo-likelihood scores, and a hydrophobicity/charge penalty term — calibrated against published IC50 values for known binders on the same targets. Published drug values (Erlotinib, Pembrolizumab, Sotorasib) are sourced from peer-reviewed literature via PubMed and DrugBank. AlphaFold values are estimated from pLDDT confidence scores, not measured binding assays. All Proteus values are computational predictions; no wet-lab validation has been performed. Results should be interpreted as design hypotheses, not confirmed affinities.
+</p>
+</div>
 <table class="compare-table">
 <thead>
 <tr><th>Feature</th><th>Proteus</th><th>AlphaFold</th><th>Rosetta</th><th>ProteinMPNN</th></tr>
@@ -517,6 +535,61 @@ Proteus
 </div>
 </section>
 
+<section id="recognition" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">Recognition</div>
+<h2>Research-backed, institution-affiliated</h2>
+<p class="subtitle">Proteus is built on published research and affiliated with leading computational biology institutions.</p>
+<div class="social-proof">
+<div class="social-item">
+<div class="org">MIT Critical Data</div>
+<div class="detail">Research collaboration — AI in clinical medicine</div>
+</div>
+<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
+<div class="social-item">
+<div class="org">Published Research</div>
+<div class="detail">AI-driven mortality prediction on MIMIC-IV · 2025</div>
+</div>
+<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
+<div class="social-item">
+<div class="org">Open Source</div>
+<div class="detail">Full codebase on GitHub — reproducible, auditable</div>
+</div>
+<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
+<div class="social-item">
+<div class="org">3 Oncology Targets</div>
+<div class="detail">EGFRvIII · PD-L1 · KRAS G12C — benchmarked</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="business" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">Business Model</div>
+<h2>Built for biotech and pharma teams</h2>
+<p class="subtitle">Proteus is currently working with select research teams on a project basis. We are not a consumer product — we work directly with scientists designing novel therapeutics.</p>
+<div class="biz-grid">
+<div class="biz-card">
+<div class="tier">Research Access</div>
+<div class="price">Free</div>
+<div class="desc">Open source self-hosted deployment. Full MCMC engine, 3 built-in targets, audit logging. For academic labs and independent researchers.</div>
+</div>
+<div class="biz-card" style="border-color:#2a2a2a">
+<div class="tier">Team License</div>
+<div class="price">$10–50K<span style="font-size:.8rem;font-weight:400;color:#555">/month</span></div>
+<div class="desc">Managed deployment, priority compute, custom targets, SLA, regulatory-aligned audit trails. For biotech teams running multiple design campaigns.</div>
+</div>
+<div class="biz-card">
+<div class="tier">Target Licensing</div>
+<div class="price">$100K–1M</div>
+<div class="desc">Per-target design campaigns with IP licensing of Proteus-generated sequences. For pharma companies seeking novel therapeutic candidates.</div>
+</div>
+</div>
+<p style="font-size:.72rem;color:#333;margin-top:24px;line-height:1.7">We are currently accepting early access partners. If you are working on a novel oncology or immunology target and want to run Proteus against it, <a href="mailto:aly@proteus.bio?subject=Proteus Early Access" target="_blank" style="color:#555;text-decoration:underline;text-underline-offset:3px">get in touch</a>.</p>
+</div>
+</section>
+
 <section id="about" style="border-top:1px solid #0a0a0a">
 <div class="container">
 <div class="section-label">Founder</div>
@@ -558,7 +631,7 @@ All code is open source. The platform is designed for regulatory-aligned researc
 <h2>Ready to design better proteins?</h2>
 <p style="color:#555;font-size:.85rem;font-weight:300;margin-bottom:28px">Get early access. We are working with select research teams to validate designs on novel oncology targets.</p>
 <div class="hero-btns" style="justify-content:center">
-<a href="mailto:aly@proteus.bio?subject=Proteus Early Access Request" class="primary">Request Early Access</a>
+<a href="mailto:aly@proteus.bio?subject=Proteus Early Access Request" class="primary" target="_blank">Request Early Access</a>
 <a href="https://github.com/DHEDHiAly/proteus" class="secondary" target="_blank">View on GitHub</a>
 </div>
 <p style="color:#333;font-size:.65rem;margin-top:20px">FOR RESEARCH USE ONLY — not a medical device.</p>
@@ -569,10 +642,9 @@ All code is open source. The platform is designed for regulatory-aligned researc
 <div class="container">
 <p>Proteus — Autonomous Protein Design</p>
 <div class="links">
-<a href="http://localhost:5173">App</a>
-<a href="http://localhost:8000/docs">API Docs</a>
+<a href="mailto:aly@proteus.bio?subject=Proteus Early Access">Request Access</a>
 <a href="https://github.com/DHEDHiAly/proteus">GitHub</a>
-<a href="https://dhedhialy.github.io/" target="_blank">About the Author</a>
+<a href="https://dhedhialy.github.io/" target="_blank">Portfolio</a>
 </div>
 <p class="disclaimer">FOR RESEARCH USE ONLY. Not a medical device. Designed protein sequences are computational predictions and must undergo wet-lab validation. This tool is not intended for diagnostic or therapeutic use.</p>
 </div>
