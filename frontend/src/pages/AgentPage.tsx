@@ -13,6 +13,67 @@ import OptimizationTrace from '../components/OptimizationTrace';
 import { savedDesignsService } from '../services/savedDesigns';
 import type { SavedDesign } from '../services/savedDesigns';
 
+// ── Frontend Q&A routing (mirrors backend _DESIGN_TRIGGERS / _QA_PAIRS) ───────
+// Only messages that match one of these patterns are sent to the MCMC backend.
+// Everything else is answered locally — this works regardless of server state.
+const DESIGN_TRIGGERS = [
+  /\bdesign\b/i, /\boptimize\b/i, /\bgenerate\b/i, /\bcreate\b/i,
+  /\brun\s+(mcmc|again|another|more|a\s+new)\b/i,
+  /\bmake\s+.{0,20}(protein|peptide|sequence|candidate)\b/i,
+  /\bfind\s+.{0,20}(binder|sequence|candidate)\b/i,
+  /\btry\s+(again|another|with|a\s+different)\b/i,
+  /\bstart\s+(over|again|a\s+new)\b/i,
+  /\bnew\s+(candidate|sequence)\b/i,
+];
+
+const QA_PAIRS: [RegExp, string][] = [
+  [/delta\s*g|binding\s+free\s+energ|\bdg\b.*binding/i,
+    "**ΔG Binding** — Gibbs free energy of binding (kcal/mol). More negative = stronger:\n- < −9: strong  ·  −7 to −9: good  ·  −6 to −7: promising  ·  > −6: weak\nCalculated as ΔG = RT·ln(Kd) at body temperature (310 K)."],
+  [/\bkd\b|dissociation\s+constant|binding\s+affinity/i,
+    "**Kd (Dissociation Constant)** — lower = tighter binding:\n- < 1 nM: ultra-high  ·  1–10 nM: drug-like  ·  10–100 nM: high  ·  > 1 μM: weak\nProteus estimates Kd from ΔG = RT·ln(Kd) via the multi-objective energy oracle."],
+  [/\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+.{0,20}work/i,
+    "**How Proteus works**\nMetropolis-Hastings MCMC across parallel temperature chains (0.5 → 10):\n1. Proposes residue mutations at each step\n2. Accepts improvements greedily; accepts bad moves probabilistically at high temperature\n3. Runs 3 rounds; returns the best candidate across all chains\nR-hat < 1.05 = converged. ESS measures chain mixing quality."],
+  [/\bplddt\b|structural\s+confidence/i,
+    "**pLDDT** — structural confidence proxy (0–100):\n- > 90: ordered  ·  70–90: confident  ·  50–70: partly disordered  ·  < 50: likely disordered"],
+  [/\bstabilit\b|\bddg\b|thermostab/i,
+    "**Stability** — secondary structure propensity (helix + sheet content, %). ΔΔG < 0 = more stable than unfolded. Use 'thermostable' constraint to increase the stability weight."],
+  [/\bsolubil\b/i,
+    "**Solubility** — estimated from GRAVY score and charged residue fraction. High D/E/K/R → soluble. Use 'high solubility' constraint to rebalance the energy oracle."],
+  [/\bselectivit\b|off.target/i,
+    "**Selectivity ratio** = on-target / off-target binding. > 5x: highly selective  ·  2–5x: acceptable  ·  < 2x: toxicity flag raised."],
+  [/lab\s+viabilit|lab.worth/i,
+    "**Lab Viability Score (0–100)** — composite of ΔG, Triple-Gate checks, and selectivity.\n≥ 70: proceed to synthesis  ·  50–70: address failing gates  ·  < 50: needs optimization."],
+  [/triple.gate|gate\s*[123]|enthalpic|solvation\s+gate|entropic/i,
+    "**Triple-Gate Physics Model**\n- Gate 1 Enthalpic Locking: surface complementarity Sc ≥ 0.4\n- Gate 2 Solvation: ΔG_solv ≤ 0 kcal/mol\n- Gate 3 Entropic Penalty: −TΔS ≤ 3.5 kcal/mol\nAll three must pass for a lab-worthy candidate."],
+  [/\br.hat\b|rhat|convergence|ess\b|effective\s+sample/i,
+    "**Convergence diagnostics**\n- R-hat < 1.05 = chains converged  ·  > 1.1 = not converged\n- ESS (Effective Sample Size): higher = better mixing. ESS/steps > 0.1 is acceptable."],
+  [/\baggregat\b/i,
+    "**Aggregation** — estimated from hydrophobic stretch length (I/L/F/V/W/M runs ≥ 4 residues). Use 'low aggregation' constraint to increase the penalty."],
+  [/\bimmunogen\b|\bmhc\b|immune/i,
+    "**Immunogenicity** — estimated from MHC anchor motif frequency. High K/R + F/Y/W at anchor positions = higher risk. Use 'low immunogenicity' constraint."],
+  [/serum\s+half.life|half.life|\bt1\/2\b|pharmacokinetic/i,
+    "**Serum half-life** — estimated from sequence length and composition:\n- Peptides < 10 AA: 10–30 min  ·  Miniproteins: 30–120 min  ·  Nanobodies: 60–240 min"],
+];
+
+const QA_FALLBACK =
+  "I specialize in protein design. I can answer questions about:\n" +
+  "- ΔG binding, Kd, MCMC, pLDDT, stability, solubility\n" +
+  "- Selectivity, immunogenicity, aggregation, serum half-life\n" +
+  "- Triple-Gate physics model, lab viability score\n\n" +
+  "To run a new design, say something like 'design a peptide' or 'optimize for high solubility'.";
+
+function isDesignRequest(msg: string): boolean {
+  return DESIGN_TRIGGERS.some((p) => p.test(msg));
+}
+
+function getLocalAnswer(msg: string): string {
+  for (const [pattern, answer] of QA_PAIRS) {
+    if (pattern.test(msg)) return answer;
+  }
+  return QA_FALLBACK;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 type Candidate = {
   rank: number; sequence: string; binding_score: number;
   stability_score: number; solubility_score: number; total_energy?: number;
@@ -173,8 +234,8 @@ function AgentMessageCard({ msg, onSave }: { msg: AgentMessage; onSave?: (best: 
                 disabled={saved}
                 className={`text-[8px] px-2 py-0.5 rounded border transition-all ${
                   saved
-                    ? 'border-green-900/50 text-green-600 cursor-default'
-                    : 'border-[#333] text-gray-500 hover:text-white hover:border-[#555]'
+                    ? 'border-green-700 bg-green-900/40 text-green-400 cursor-default'
+                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
                 }`}
               >
                 {saved ? 'Saved' : 'Save'}
@@ -387,6 +448,7 @@ export default function AgentPage() {
   const [designTime, setDesignTime] = useState(0);
   const [designTarget, setDesignTarget] = useState('');
   const [comparisonMode, setComparisonMode] = useState(false);
+  const [saveToast, setSaveToast] = useState(false);
 
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -443,12 +505,20 @@ export default function AgentPage() {
     if (!input.trim() || !patient || loading) return;
     setError(null);
     setMessages((prev) => [...prev, { role: 'user', content: input }]);
+    const userMessage = input;
     setInput('');
+
+    // Q&A short-circuit — answer locally without any API call
+    if (!isDesignRequest(userMessage)) {
+      setMessages((prev) => [...prev, { role: 'agent', content: getLocalAnswer(userMessage) }]);
+      return;
+    }
+
     setLoading(true);
     setIsRunning(true);
 
     try {
-      const res = await agentApi.design(patient, input);
+      const res = await agentApi.design(patient, userMessage);
       // Only append agent messages — the user message was already added optimistically
       // above, and the backend echoes it back as messages[0] which would cause a duplicate.
       // Also preserves full conversation history across turns.
@@ -539,6 +609,8 @@ export default function AgentPage() {
         ? { cancerType: patient.cancer_type, cancerStage: patient.cancer_stage }
         : undefined,
     });
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
   };
 
   const handleSaveCandidate = (c: Candidate) => {
@@ -558,6 +630,8 @@ export default function AgentPage() {
         ? { cancerType: patient.cancer_type, cancerStage: patient.cancer_stage }
         : undefined,
     });
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
   };
 
   const paletteCommands = [
@@ -855,6 +929,13 @@ export default function AgentPage() {
       </div>
 
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} commands={paletteCommands} />
+
+      {/* Save toast */}
+      {saveToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#111] border border-green-800/60 text-green-400 text-[11px] px-4 py-2 rounded-lg shadow-xl pointer-events-none">
+          Saved to History
+        </div>
+      )}
     </div>
   );
 }
