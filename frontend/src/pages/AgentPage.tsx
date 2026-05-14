@@ -516,6 +516,7 @@ export default function AgentPage() {
               <div className="flex items-center space-x-1">
                 <Link to="/agent" className="px-3 py-1.5 rounded text-[11px] font-medium bg-white/10 text-white">Workspace</Link>
                 <Link to="/benchmarks" className="px-3 py-1.5 rounded text-[11px] font-medium text-gray-500 hover:text-white hover:bg-white/5 transition-colors">Benchmarks</Link>
+                <Link to="/comparisons" className="px-3 py-1.5 rounded text-[11px] font-medium text-gray-500 hover:text-white hover:bg-white/5 transition-colors">Comparisons</Link>
                 <Link to="/dashboard" className="px-3 py-1.5 rounded text-[11px] font-medium text-gray-500 hover:text-white hover:bg-white/5 transition-colors">History</Link>
               </div>
             </div>

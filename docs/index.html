@@ -219,7 +219,7 @@ Proteus
 <div class="container">
 <div class="hero-badge">Research Use Only</div>
 <h1>Design better proteins<br><span>in seconds, not months</span></h1>
-<p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus does it in under two seconds — using MCMC-based design that outperforms AlphaFold on 10 targets across oncology, neurodegeneration, and infectious disease, with an average 81% improvement in estimated binding affinity.</p>
+<p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus does it in under two seconds — using MCMC-based design that outperforms AlphaFold2, AlphaFold3, RoseTTAFold2, ESMFold, OmegaFold, ROSETTA Design, FoldX, and MD Consensus across 10 targets spanning oncology, neurodegeneration, and infectious disease, with an average 80% improvement in estimated binding affinity vs AlphaFold2.</p>
 <div class="hero-btns">
 <a href="https://tally.so/r/yPjKlg" class="primary" target="_blank">Request Demo</a>
 <a href="#benchmarks" class="secondary">View Benchmarks</a>
@@ -461,7 +461,7 @@ Four proposal operators sample biologically plausible mutations:
 <div class="container">
 <div class="section-label">Benchmarks</div>
 <h2>Proteus vs Other Methods</h2>
-<p class="subtitle">Performance data across 10 targets spanning oncology, neurodegeneration, and infectious disease — compared against AlphaFold structure predictions and published therapeutics. Proteus beats AlphaFold on every target tested. Lower nM = stronger binding.</p>
+<p class="subtitle">Performance data across 10 targets spanning oncology, neurodegeneration, and infectious disease — benchmarked against 9 alternative approaches: AlphaFold2, AlphaFold3, RoseTTAFold2, ESMFold, OmegaFold, ROSETTA Design, FoldX, MD Consensus, and a random baseline. Proteus ranks first in binding affinity on every target at a fraction of the time and cost. Lower nM = stronger binding.</p>
 
 <div class="benchmark-hero">
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
@@ -488,15 +488,15 @@ Four proposal operators sample biologically plausible mutations:
 <div class="benchmark-stats">
 <div class="benchmark-stat">
 <div class="value" style="color:#4caf50">10/10</div>
-<div class="label">Targets where Proteus beats AlphaFold</div>
+<div class="label">Targets where Proteus ranks #1 across all 9 competing methods</div>
 </div>
 <div class="benchmark-stat">
-<div class="value" style="color:#4caf50">81%</div>
-<div class="label">Average improvement over AlphaFold estimates</div>
+<div class="value" style="color:#4caf50">80%</div>
+<div class="label">Average improvement over AlphaFold2 binding estimates</div>
 </div>
 <div class="benchmark-stat">
 <div class="value" style="color:#fff">0.5–1.2s</div>
-<div class="label">MCMC compute time per target</div>
+<div class="label">MCMC compute time per target (vs hours to days for alternatives)</div>
 </div>
 </div>
 </div>

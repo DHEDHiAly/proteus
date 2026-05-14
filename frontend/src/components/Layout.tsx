@@ -5,6 +5,7 @@ import clsx from 'clsx'
 const navItems = [
   { path: '/agent', label: 'Workspace', icon: 'WS' },
   { path: '/benchmarks', label: 'Benchmarks', icon: 'BM' },
+  { path: '/comparisons', label: 'Comparisons', icon: 'CP' },
   { path: '/dashboard', label: 'History', icon: 'HI' },
 ]
 

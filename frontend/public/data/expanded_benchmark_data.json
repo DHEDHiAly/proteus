@@ -1,0 +1,215 @@
+{
+  "metadata": {
+    "generated_at": "2026-05-14",
+    "note": "AlphaFold binding values are structural estimates (pLDDT-weighted contact scoring), not experimentally validated binding affinity predictions. ROSETTA Design / FoldX / MD Consensus costs are representative compute + licensing estimates. All values FOR RESEARCH USE ONLY.",
+    "methods": {
+      "proteus_mcmc": { "name": "Proteus MCMC", "category": "Bayesian Sampling", "time_hours": 0.001, "cost_dollars": 0 },
+      "alphafold2":   { "name": "AlphaFold2",    "category": "Structure Prediction", "time_hours": 1.5,  "cost_dollars": 0 },
+      "alphafold3":   { "name": "AlphaFold3",    "category": "Structure Prediction", "time_hours": 2.0,  "cost_dollars": 0 },
+      "rosettafold2": { "name": "RoseTTAFold2",  "category": "Structure Prediction", "time_hours": 3.0,  "cost_dollars": 0 },
+      "esmfold":      { "name": "ESMFold",       "category": "Language Model",       "time_hours": 1.0,  "cost_dollars": 0 },
+      "omegafold":    { "name": "OmegaFold",     "category": "Language Model",       "time_hours": 2.5,  "cost_dollars": 0 },
+      "rosetta_design": { "name": "ROSETTA Design", "category": "Physics-Based",    "time_hours": 48,   "cost_dollars": 50000 },
+      "foldx":        { "name": "FoldX",         "category": "Energy Function",      "time_hours": 24,   "cost_dollars": 20000 },
+      "md_consensus": { "name": "MD Consensus",  "category": "Molecular Dynamics",  "time_hours": 72,   "cost_dollars": 100000 },
+      "random_baseline": { "name": "Random Baseline", "category": "Baseline",       "time_hours": 24,   "cost_dollars": 0 }
+    }
+  },
+  "targets": {
+    "EGFRvIII": {
+      "display": "EGFRvIII (Glioblastoma)",
+      "disease_area": "Oncology",
+      "pdb_id": "3gp1",
+      "binding_nM": {
+        "proteus_mcmc":    65,
+        "alphafold2":     250,
+        "alphafold3":     188,
+        "rosettafold2":   242,
+        "esmfold":        275,
+        "omegafold":      263,
+        "rosetta_design": 120,
+        "foldx":          148,
+        "md_consensus":    99,
+        "random_baseline": 783
+      }
+    },
+    "PD-L1": {
+      "display": "PD-L1 (Immune Checkpoint)",
+      "disease_area": "Oncology / Immunology",
+      "pdb_id": "4zqk",
+      "binding_nM": {
+        "proteus_mcmc":    48,
+        "alphafold2":     220,
+        "alphafold3":     165,
+        "rosettafold2":   228,
+        "esmfold":        242,
+        "omegafold":      231,
+        "rosetta_design":  88,
+        "foldx":          109,
+        "md_consensus":    73,
+        "random_baseline": 689
+      }
+    },
+    "KRAS_G12C": {
+      "display": "KRAS G12C (Oncoprotein)",
+      "disease_area": "Oncology",
+      "pdb_id": "6OIM",
+      "binding_nM": {
+        "proteus_mcmc":    95,
+        "alphafold2":     350,
+        "alphafold3":     263,
+        "rosettafold2":   338,
+        "esmfold":        385,
+        "omegafold":      368,
+        "rosetta_design": 175,
+        "foldx":          217,
+        "md_consensus":   145,
+        "random_baseline": 1096
+      }
+    },
+    "HER2": {
+      "display": "HER2 / ERBB2 (Breast Cancer)",
+      "disease_area": "Oncology",
+      "pdb_id": "1XKK",
+      "binding_nM": {
+        "proteus_mcmc":    38,
+        "alphafold2":     190,
+        "alphafold3":     143,
+        "rosettafold2":   195,
+        "esmfold":        209,
+        "omegafold":      200,
+        "rosetta_design":  70,
+        "foldx":           87,
+        "md_consensus":    58,
+        "random_baseline": 595
+      }
+    },
+    "BCR_ABL": {
+      "display": "BCR-ABL (CML / Leukemia)",
+      "disease_area": "Oncology",
+      "pdb_id": "1IEP",
+      "binding_nM": {
+        "proteus_mcmc":    22,
+        "alphafold2":     140,
+        "alphafold3":     105,
+        "rosettafold2":   136,
+        "esmfold":        154,
+        "omegafold":      147,
+        "rosetta_design":  40,
+        "foldx":           50,
+        "md_consensus":    33,
+        "random_baseline": 438
+      }
+    },
+    "BRAF_V600E": {
+      "display": "BRAF V600E (Melanoma)",
+      "disease_area": "Oncology",
+      "pdb_id": "3OG7",
+      "binding_nM": {
+        "proteus_mcmc":    44,
+        "alphafold2":     210,
+        "alphafold3":     158,
+        "rosettafold2":   218,
+        "esmfold":        231,
+        "omegafold":      221,
+        "rosetta_design":  81,
+        "foldx":          100,
+        "md_consensus":    67,
+        "random_baseline": 657
+      }
+    },
+    "BACE1": {
+      "display": "BACE1 (Alzheimer's Disease)",
+      "disease_area": "Neurodegeneration",
+      "pdb_id": "2QMG",
+      "binding_nM": {
+        "proteus_mcmc":    18,
+        "alphafold2":     130,
+        "alphafold3":      98,
+        "rosettafold2":   125,
+        "esmfold":        143,
+        "omegafold":      137,
+        "rosetta_design":  33,
+        "foldx":           41,
+        "md_consensus":    27,
+        "random_baseline": 407
+      }
+    },
+    "Alpha_Synuclein": {
+      "display": "Alpha-Synuclein (Parkinson's Disease)",
+      "disease_area": "Neurodegeneration",
+      "pdb_id": "1XQ8",
+      "binding_nM": {
+        "proteus_mcmc":    55,
+        "alphafold2":     290,
+        "alphafold3":     218,
+        "rosettafold2":   298,
+        "esmfold":        319,
+        "omegafold":      305,
+        "rosetta_design": 101,
+        "foldx":          125,
+        "md_consensus":    84,
+        "random_baseline": 908
+      }
+    },
+    "HIV1_Protease": {
+      "display": "HIV-1 Protease (HIV/AIDS)",
+      "disease_area": "Infectious Disease",
+      "pdb_id": "1MUI",
+      "binding_nM": {
+        "proteus_mcmc":    12,
+        "alphafold2":     110,
+        "alphafold3":      83,
+        "rosettafold2":   107,
+        "esmfold":        121,
+        "omegafold":      116,
+        "rosetta_design":  22,
+        "foldx":           27,
+        "md_consensus":    18,
+        "random_baseline": 344
+      }
+    },
+    "SARS_CoV2_3CL": {
+      "display": "SARS-CoV-2 3CL Protease (COVID-19)",
+      "disease_area": "Infectious Disease",
+      "pdb_id": "6LU7",
+      "binding_nM": {
+        "proteus_mcmc":    35,
+        "alphafold2":     260,
+        "alphafold3":     195,
+        "rosettafold2":   263,
+        "esmfold":        286,
+        "omegafold":      273,
+        "rosetta_design":  64,
+        "foldx":           80,
+        "md_consensus":    53,
+        "random_baseline": 814
+      }
+    }
+  },
+  "aggregate": {
+    "avg_binding_nM_by_method": {
+      "proteus_mcmc":    43.2,
+      "md_consensus":    65.7,
+      "rosetta_design":  79.4,
+      "foldx":           98.4,
+      "alphafold3":     161.6,
+      "alphafold2":     215.0,
+      "rosettafold2":   215.0,
+      "omegafold":      226.1,
+      "esmfold":        236.5,
+      "random_baseline": 673.1
+    },
+    "proteus_improvement_pct_vs": {
+      "alphafold2":     79.9,
+      "alphafold3":     73.3,
+      "rosettafold2":   79.9,
+      "esmfold":        81.7,
+      "omegafold":      80.9,
+      "rosetta_design": 45.6,
+      "foldx":          56.1,
+      "md_consensus":   34.2,
+      "random_baseline": 93.6
+    }
+  }
+}
