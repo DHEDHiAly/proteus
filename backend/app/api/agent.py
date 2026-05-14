@@ -16,13 +16,23 @@ agent = ProteinDesignAgent()
 async def greet(current_user: User = Depends(get_current_user)):
     reply = (
         "I am Proteus, your autonomous protein design agent.\n\n"
-        "I work in iterative cycles:\n"
-        "1. **Research** — Analyze target protein structure and literature\n"
-        "2. **Generate** — Run MCMC to produce candidate sequences\n"
-        "3. **Fold** — Predict 3D structure of candidates\n"
-        "4. **Evaluate** — Score binding, stability, solubility\n"
-        "5. **Iterate** — Use best candidate as seed for next round\n\n"
-        "Enter a message to begin."
+        "I run iterative MCMC design cycles across parallel temperature chains, "
+        "scoring each candidate on eight biophysical objectives:\n"
+        "- Binding affinity, stability, solubility\n"
+        "- pLDDT estimate, ΔΔG (kcal/mol), aggregation propensity\n"
+        "- Immunogenicity score, manufacturability\n\n"
+        "I recognize design constraints in your message. For example:\n"
+        "- *no cysteines*, *high solubility*, *low aggregation*\n"
+        "- *thermostable*, *alpha-helical*, *60 amino acids*\n"
+        "- *BBB-penetrant*, *low immunogenicity*, *antimicrobial*\n\n"
+        "I will also flag physically impossible requests — for example, "
+        "a protein that is simultaneously highly hydrophobic and highly soluble, "
+        "or one with infinite thermal stability — and explain why, then suggest "
+        "a realizable alternative.\n\n"
+        "After each round I show the full mutation rationale: which residues "
+        "changed, their chemical property class shift, BLOSUM62 conservation score, "
+        "and the energy delta that drove acceptance.\n\n"
+        "Enter your clinical information in the form to begin."
     )
     return {"reply": reply}
 

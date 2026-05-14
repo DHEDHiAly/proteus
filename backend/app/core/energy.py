@@ -119,6 +119,12 @@ class EnergyOracle:
         binding = self._compute_binding_score(sequence)
         stability = self._compute_stability_score(sequence)
         solubility = self._compute_solubility_score(sequence)
+        immunogenicity = self._compute_immunogenicity_score(sequence)
+        ddg = self._compute_ddg_estimate(sequence, stability)
+        manufacturability = self._compute_manufacturability_score(sequence, solubility)
+        plddt = self._compute_plddt_estimate(sequence, stability)
+        novelty = self._compute_novelty_score(sequence)
+        aggregation = float(np.clip(self._compute_aggregation_penalty(sequence), 0.0, 1.0))
         return {
             "sequence": sequence,
             "binding_score": float(binding),
@@ -127,6 +133,13 @@ class EnergyOracle:
             "total_energy": float(energy),
             "hydrophobicity": float(self._compute_gravy(sequence)),
             "net_charge": float(self._compute_net_charge(sequence)),
+            # Hard biophysical metrics
+            "aggregation_propensity": aggregation,
+            "immunogenicity_score": float(immunogenicity),
+            "ddg_estimate_kcal_mol": float(ddg),
+            "manufacturability_score": float(manufacturability),
+            "plddt_estimate": float(plddt),
+            "novelty_score": float(novelty),
         }
 
     def _compute_binding_score(self, seq: str) -> float:
@@ -229,6 +242,95 @@ class EnergyOracle:
         if current_stretch >= 3:
             hydrophobic_stretches += current_stretch - 2
         return min(hydrophobic_stretches * 0.15, 1.0)
+
+    def _compute_immunogenicity_score(self, seq: str) -> float:
+        """
+        Heuristic T-cell immunogenicity estimate (0 = low risk, 1 = high risk).
+        Based on basic amino acid density (MHC Class II anchors) and aromatic
+        residue frequency (hydrophobic MHC Class I anchor motifs).
+        """
+        if len(seq) < 5:
+            return 0.3
+        score = 0.0
+        basic_ratio = sum(1 for aa in seq if aa in "KR") / max(len(seq), 1)
+        score += min(basic_ratio * 2.0, 0.4)
+        aromatic_ratio = sum(1 for aa in seq if aa in "FWY") / max(len(seq), 1)
+        score += min(aromatic_ratio * 1.5, 0.3)
+        if len(seq) > 50:
+            score += min((len(seq) - 50) / 150.0, 0.3)
+        return float(np.clip(score, 0.0, 1.0))
+
+    def _compute_ddg_estimate(self, seq: str, stability: Optional[float] = None) -> float:
+        """
+        Heuristic ΔΔG estimate relative to unfolded state (kcal/mol).
+        Negative = stabilizing, positive = destabilizing.
+        Not a Rosetta-grade calculation; calibrated to typical protein ranges.
+        """
+        if stability is None:
+            stability = self._compute_stability_score(seq)
+        ddg = (0.5 - stability) * 10.0
+        gravy = self._compute_gravy(seq)
+        if 0.3 <= gravy <= 1.5:
+            ddg -= 1.2
+        elif gravy > 2.5:
+            ddg += 2.0
+        net = abs(self._compute_net_charge(seq))
+        if net < 3:
+            ddg -= 0.6
+        elif net > 8:
+            ddg += 1.0
+        return float(np.clip(ddg, -8.0, 8.0))
+
+    def _compute_manufacturability_score(self, seq: str, solubility: Optional[float] = None) -> float:
+        """
+        Recombinant expression feasibility (0 = difficult, 1 = straightforward).
+        Considers solubility, cysteine count, length, and repetitive regions.
+        """
+        if solubility is None:
+            solubility = self._compute_solubility_score(seq)
+        score = solubility * 0.35
+        cys_ratio = seq.count("C") / max(len(seq), 1)
+        score += max(0.0, 0.25 - cys_ratio * 2.0)
+        if len(seq) <= 60:
+            score += 0.20
+        elif len(seq) <= 100:
+            score += 0.15
+        elif len(seq) <= 200:
+            score += 0.10
+        repeats = sum(1 for i in range(len(seq) - 3) if seq[i] == seq[i + 1] == seq[i + 2])
+        score += max(0.0, 0.20 - repeats * 0.03)
+        return float(np.clip(score, 0.0, 1.0))
+
+    def _compute_plddt_estimate(self, seq: str, stability: Optional[float] = None) -> float:
+        """
+        Pseudo-pLDDT estimate (0–100) analogous to AlphaFold's per-residue confidence.
+        Based on sequence composition — not a true structure prediction.
+        Scores <50 indicate likely disordered regions; >70 suggests ordered folds.
+        """
+        if stability is None:
+            stability = self._compute_stability_score(seq)
+        plddt = 20.0 + stability * 60.0
+        gly_ratio = seq.count("G") / max(len(seq), 1)
+        plddt -= gly_ratio * 30.0
+        pro_ratio = seq.count("P") / max(len(seq), 1)
+        plddt -= pro_ratio * 20.0
+        helix_ratio = sum(1 for aa in seq if aa in "AELM") / max(len(seq), 1)
+        plddt += helix_ratio * 15.0
+        return float(np.clip(plddt, 30.0, 95.0))
+
+    def _compute_novelty_score(self, seq: str) -> float:
+        """
+        Shannon entropy of amino acid composition as a proxy for sequence novelty.
+        Returns 0–1 (1 = maximally diverse usage across all 20 AAs).
+        """
+        if not seq:
+            return 0.0
+        counts: dict = {}
+        for aa in seq:
+            counts[aa] = counts.get(aa, 0) + 1
+        n = len(seq)
+        entropy = -sum((c / n) * np.log2(c / n + 1e-10) for c in counts.values())
+        return float(np.clip(entropy / 4.32, 0.0, 1.0))
 
     def _score_with_model(self, sequence: str) -> float:
         try:
