@@ -87,9 +87,7 @@ Right now the app only runs on localhost. Anyone clicking "Launch Workspace" hit
 
 #### 3. Set up a real early access form
 Right now all CTAs go to mailto, which is functional but signals "side project."
-- Create a free form at https://tally.so (takes 5 minutes)
-- Fields: Name, Email, Institution/Company, Target of interest, How did you hear about us
-- Replace all `mailto:aly@proteus.bio` CTA links in `docs/index.html` with your Tally form URL
+- Tally form live at https://tally.so/r/yPjKlg — all CTAs on the website point to it
 - Tally gives you a dashboard of signups — a list of 10+ signups is a real traction metric for YC
 
 #### 4. Get one real user or collaborator
