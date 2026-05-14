@@ -168,7 +168,7 @@ frontend/
       PatientForm.tsx
   public/
     data/
-      real_benchmark_data.json   — 3 targets, 13 binders
+      real_benchmark_data.json   — 10 targets across 4 disease areas (beats AlphaFold on all 10)
       benchmark_test_data.json   — fallback
 
 docs/
