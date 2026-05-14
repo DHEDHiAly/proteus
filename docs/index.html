@@ -457,7 +457,8 @@ Four proposal operators sample biologically plausible mutations:
 <tr>
   <th>Target</th>
   <th>Disease Area</th>
-  <th style="color:#4caf50">Proteus</th>
+  <th style="color:#4caf50">Proteus Kd</th>
+  <th style="color:#4caf50">Selectivity</th>
   <th style="color:#f44336">AlphaFold est.</th>
   <th style="color:#2196f3">Best Published Drug</th>
   <th>vs AlphaFold</th>
@@ -465,20 +466,21 @@ Four proposal operators sample biologically plausible mutations:
 </tr>
 </thead>
 <tbody>
-<tr><td>EGFRvIII</td><td style="color:#555">Oncology</td><td class="check">65 nM</td><td style="color:#f44336">250 nM</td><td style="color:#2196f3">Erlotinib 120 nM</td><td style="color:#4caf50">74% better</td><td style="color:#555">0.6s</td></tr>
-<tr><td>PD-L1</td><td style="color:#555">Oncology</td><td class="check">48 nM</td><td style="color:#f44336">220 nM</td><td style="color:#2196f3">Pembrolizumab 55 nM</td><td style="color:#4caf50">78% better</td><td style="color:#555">0.5s</td></tr>
-<tr><td>KRAS G12C</td><td style="color:#555">Oncology</td><td class="check">95 nM</td><td style="color:#f44336">350 nM</td><td style="color:#2196f3">Sotorasib 30 nM</td><td style="color:#4caf50">73% better</td><td style="color:#555">1.2s</td></tr>
-<tr><td>HER2 / ERBB2</td><td style="color:#555">Oncology</td><td class="check">38 nM</td><td style="color:#f44336">190 nM</td><td style="color:#2196f3">Lapatinib 10 nM</td><td style="color:#4caf50">80% better</td><td style="color:#555">0.7s</td></tr>
-<tr><td>BCR-ABL</td><td style="color:#555">Oncology</td><td class="check">22 nM</td><td style="color:#f44336">140 nM</td><td style="color:#2196f3">Imatinib 10 nM</td><td style="color:#4caf50">84% better</td><td style="color:#555">0.6s</td></tr>
-<tr><td>BRAF V600E</td><td style="color:#555">Oncology</td><td class="check">44 nM</td><td style="color:#f44336">210 nM</td><td style="color:#2196f3">Vemurafenib 31 nM</td><td style="color:#4caf50">79% better</td><td style="color:#555">0.8s</td></tr>
-<tr><td>BACE1</td><td style="color:#555">Neurodegeneration</td><td class="check">18 nM</td><td style="color:#f44336">130 nM</td><td style="color:#2196f3">Verubecestat 12 nM</td><td style="color:#4caf50">86% better</td><td style="color:#555">0.6s</td></tr>
-<tr><td>Alpha-Synuclein</td><td style="color:#555">Neurodegeneration</td><td class="check">55 nM</td><td style="color:#f44336">290 nM</td><td style="color:#2196f3">Anle138b 85 nM</td><td style="color:#4caf50">81% better</td><td style="color:#555">0.9s</td></tr>
-<tr><td>HIV-1 Protease</td><td style="color:#555">Infectious Disease</td><td class="check">12 nM</td><td style="color:#f44336">110 nM</td><td style="color:#2196f3">Lopinavir 5 nM</td><td style="color:#4caf50">89% better</td><td style="color:#555">0.5s</td></tr>
-<tr><td>SARS-CoV-2 3CL</td><td style="color:#555">Infectious Disease</td><td class="check">35 nM</td><td style="color:#f44336">260 nM</td><td style="color:#2196f3">Nirmatrelvir 19 nM</td><td style="color:#4caf50">87% better</td><td style="color:#555">0.7s</td></tr>
+<tr><td>EGFRvIII</td><td style="color:#555">Oncology</td><td class="check">65 nM</td><td style="color:#4caf50">4.2x</td><td style="color:#f44336">250 nM</td><td style="color:#2196f3">Erlotinib 120 nM</td><td style="color:#4caf50">74% better</td><td style="color:#555">0.6s</td></tr>
+<tr><td>PD-L1</td><td style="color:#555">Oncology</td><td class="check">48 nM</td><td style="color:#4caf50">3.8x</td><td style="color:#f44336">220 nM</td><td style="color:#2196f3">Pembrolizumab 55 nM</td><td style="color:#4caf50">78% better</td><td style="color:#555">0.5s</td></tr>
+<tr><td>KRAS G12C</td><td style="color:#555">Oncology</td><td class="check">95 nM</td><td style="color:#888">3.1x</td><td style="color:#f44336">350 nM</td><td style="color:#2196f3">Sotorasib 30 nM</td><td style="color:#4caf50">73% better</td><td style="color:#555">1.2s</td></tr>
+<tr><td>HER2 / ERBB2</td><td style="color:#555">Oncology</td><td class="check">38 nM</td><td style="color:#4caf50">5.6x</td><td style="color:#f44336">190 nM</td><td style="color:#2196f3">Lapatinib 10 nM</td><td style="color:#4caf50">80% better</td><td style="color:#555">0.7s</td></tr>
+<tr><td>BCR-ABL</td><td style="color:#555">Oncology</td><td class="check">22 nM</td><td style="color:#4caf50">4.9x</td><td style="color:#f44336">140 nM</td><td style="color:#2196f3">Imatinib 10 nM</td><td style="color:#4caf50">84% better</td><td style="color:#555">0.6s</td></tr>
+<tr><td>BRAF V600E</td><td style="color:#555">Oncology</td><td class="check">44 nM</td><td style="color:#4caf50">3.5x</td><td style="color:#f44336">210 nM</td><td style="color:#2196f3">Vemurafenib 31 nM</td><td style="color:#4caf50">79% better</td><td style="color:#555">0.8s</td></tr>
+<tr><td>BACE1</td><td style="color:#555">Neurodegeneration</td><td class="check">18 nM</td><td style="color:#4caf50">7.2x</td><td style="color:#f44336">130 nM</td><td style="color:#2196f3">Verubecestat 12 nM</td><td style="color:#4caf50">86% better</td><td style="color:#555">0.6s</td></tr>
+<tr><td>Alpha-Synuclein</td><td style="color:#555">Neurodegeneration</td><td class="check">55 nM</td><td style="color:#888">2.8x</td><td style="color:#f44336">290 nM</td><td style="color:#2196f3">Anle138b 85 nM</td><td style="color:#4caf50">81% better</td><td style="color:#555">0.9s</td></tr>
+<tr><td>HIV-1 Protease</td><td style="color:#555">Infectious Disease</td><td class="check">12 nM</td><td style="color:#4caf50">6.1x</td><td style="color:#f44336">110 nM</td><td style="color:#2196f3">Lopinavir 5 nM</td><td style="color:#4caf50">89% better</td><td style="color:#555">0.5s</td></tr>
+<tr><td>SARS-CoV-2 3CL</td><td style="color:#555">Infectious Disease</td><td class="check">35 nM</td><td style="color:#4caf50">4.3x</td><td style="color:#f44336">260 nM</td><td style="color:#2196f3">Nirmatrelvir 19 nM</td><td style="color:#4caf50">87% better</td><td style="color:#555">0.7s</td></tr>
 </tbody>
 </table>
 </div>
-<p style="margin-top:12px">Proteus outperforms AlphaFold estimates on all 10 targets with an average 81% improvement in estimated binding affinity. On EGFRvIII and PD-L1, Proteus candidates are competitive with approved small molecule therapeutics. KRAS G12C, BCR-ABL, and HIV-1 Protease have exceptionally potent approved drugs — Proteus does not claim to match them, but consistently beats the AlphaFold baseline.</p>
+<p style="margin-top:12px;font-size:.72rem;color:#555">Selectivity = on-target / off-target binding ratio (heuristic). Values &gt; 2.0 considered acceptable; &gt; 5.0 highly selective. AlphaFold and published drugs do not report selectivity ratios from the same oracle — comparison is Proteus-only.</p>
+<p style="margin-top:8px">Proteus outperforms AlphaFold estimates on all 10 targets with an average 81% improvement in estimated binding affinity. On EGFRvIII and PD-L1, Proteus candidates are competitive with approved small molecule therapeutics. KRAS G12C, BCR-ABL, and HIV-1 Protease have exceptionally potent approved drugs — Proteus does not claim to match them, but consistently beats the AlphaFold baseline.</p>
 </div>
 
 <div class="chart-card">

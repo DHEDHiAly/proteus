@@ -8,6 +8,10 @@ interface Candidate {
   solubility_score: number;
   total_energy?: number;
   num_mutations_from_seed?: number;
+  kd_nM?: number;
+  serum_half_life_min?: number;
+  selectivity_ratio?: number;
+  toxicity_flag?: boolean;
 }
 
 interface ResultsPanelProps {
@@ -94,11 +98,29 @@ export default function ResultsPanel({ candidates, seed, onInspect, onExport }: 
                 className="font-mono text-[10px] truncate"
                 dangerouslySetInnerHTML={{ __html: highlightMutations(c.sequence) }}
               />
-              <div className="flex space-x-2 text-[8px] text-gray-600 mt-0.5">
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[8px] text-gray-600 mt-0.5">
                 <span>Binding: {(c.binding_score * 100).toFixed(0)}%</span>
+                {c.kd_nM != null && (
+                  <span>Kd: {c.kd_nM < 1000 ? c.kd_nM.toFixed(0) + ' nM' : (c.kd_nM / 1000).toFixed(1) + ' μM'}</span>
+                )}
                 <span>Stab: {(c.stability_score * 100).toFixed(0)}%</span>
                 {c.total_energy != null && <span>E: {c.total_energy.toFixed(3)}</span>}
               </div>
+              {c.toxicity_flag && (
+                <span className="inline-block mt-0.5 text-[7px] bg-red-900/40 text-red-400 border border-red-900/50 px-1 py-0.5 rounded">
+                  High Tox Risk
+                </span>
+              )}
+              {!c.toxicity_flag && c.selectivity_ratio != null && c.selectivity_ratio >= 5 && (
+                <span className="inline-block mt-0.5 text-[7px] bg-green-900/30 text-green-500 border border-green-900/40 px-1 py-0.5 rounded">
+                  Selective {c.selectivity_ratio.toFixed(1)}x
+                </span>
+              )}
+              {!c.toxicity_flag && c.selectivity_ratio != null && c.selectivity_ratio >= 2 && c.selectivity_ratio < 5 && (
+                <span className="inline-block mt-0.5 text-[7px] bg-yellow-900/30 text-yellow-600 border border-yellow-900/40 px-1 py-0.5 rounded">
+                  Moderate {c.selectivity_ratio.toFixed(1)}x
+                </span>
+              )}
             </div>
             <div className="flex space-x-1 flex-shrink-0">
               <button onClick={(e) => { e.stopPropagation(); onInspect(c.sequence); }}

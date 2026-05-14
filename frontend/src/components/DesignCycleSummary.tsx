@@ -13,6 +13,10 @@ interface RoundData {
   num_candidates?: number;
   steps?: number;
   chains?: number;
+  kd_nM?: number;
+  serum_half_life_min?: number;
+  selectivity_ratio?: number;
+  toxicity_flag?: boolean;
 }
 
 interface DesignCycleSummaryProps {
@@ -32,7 +36,14 @@ export default function DesignCycleSummary({ rounds, totalTime, targetName }: De
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2 pb-2 border-b border-[#1a1a1a]">
         <span>Design Cycle — {rounds.length} rounds · {totalTime.toFixed(1)}s · Target: {targetName}</span>
-        <span className="text-white font-medium">Best: {(bestRound.binding_score * 100).toFixed(1)}%</span>
+        <span className="text-white font-medium">
+          Best: {(bestRound.binding_score * 100).toFixed(1)}%
+          {bestRound.kd_nM != null && (
+            <span className="text-gray-400 font-normal ml-1">
+              · Kd {bestRound.kd_nM < 1000 ? bestRound.kd_nM.toFixed(0) + ' nM' : (bestRound.kd_nM / 1000).toFixed(1) + ' μM'}
+            </span>
+          )}
+        </span>
       </div>
 
       {rounds.map((r, idx) => {
@@ -79,6 +90,25 @@ export default function DesignCycleSummary({ rounds, totalTime, targetName }: De
                   <div className="bg-[#0a0a0a] rounded p-2">
                     <div className="text-gray-500">Binding</div>
                     <div className="text-white font-bold">{(r.binding_score * 100).toFixed(1)}%</div>
+                  </div>
+                  <div className="bg-[#0a0a0a] rounded p-2">
+                    <div className="text-gray-500">Kd estimate</div>
+                    <div className="text-white font-bold">
+                      {r.kd_nM != null
+                        ? (r.kd_nM < 1000 ? r.kd_nM.toFixed(0) + ' nM' : (r.kd_nM / 1000).toFixed(1) + ' μM')
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="bg-[#0a0a0a] rounded p-2">
+                    <div className="text-gray-500">Half-life</div>
+                    <div className="text-white font-bold">{r.serum_half_life_min != null ? r.serum_half_life_min.toFixed(0) + ' min' : '—'}</div>
+                  </div>
+                  <div className="bg-[#0a0a0a] rounded p-2">
+                    <div className="text-gray-500">Selectivity</div>
+                    <div className={`font-bold ${r.toxicity_flag ? 'text-red-400' : r.selectivity_ratio != null && r.selectivity_ratio >= 5 ? 'text-green-400' : 'text-yellow-500'}`}>
+                      {r.selectivity_ratio != null ? r.selectivity_ratio.toFixed(1) + 'x' : '—'}
+                      {r.toxicity_flag && ' !'}
+                    </div>
                   </div>
                   <div className="bg-[#0a0a0a] rounded p-2">
                     <div className="text-gray-500">Stability</div>

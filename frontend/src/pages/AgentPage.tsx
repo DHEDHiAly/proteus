@@ -13,7 +13,8 @@ import CommandPalette, { useCommandPalette } from '../components/CommandPalette'
 type Candidate = {
   rank: number; sequence: string; binding_score: number;
   stability_score: number; solubility_score: number; total_energy?: number;
-  num_mutations_from_seed?: number;
+  num_mutations_from_seed?: number; kd_nM?: number;
+  serum_half_life_min?: number; selectivity_ratio?: number; toxicity_flag?: boolean;
 };
 
 export default function AgentPage() {
@@ -103,6 +104,8 @@ export default function AgentPage() {
               rank: i + 1, sequence: r.sequence || '',
               binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
               solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
+              kd_nM: r.kd_nM, serum_half_life_min: r.serum_half_life_min,
+              selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
             })) as Candidate[]);
           return ranked.length > 0 ? ranked : prev;
         });
@@ -337,7 +340,7 @@ export default function AgentPage() {
         <main className={`flex-1 flex flex-col min-w-0 ${comparisonMode ? 'w-1/2' : ''}`}>
           <div className="flex-1 relative bg-[#000]">
             <div className="absolute inset-3">
-              <div className="h-full rounded-xl border border-[#1a1a1a] overflow-hidden bg-[#050505]">
+              <div className="h-full rounded-xl border border-[#1a1a1a] overflow-hidden bg-[#050505] relative">
                 {activeViewerPdb && (
                   <iframe
                     src={`https://www.rcsb.org/3d-view/${activeViewerPdb}?style=stick&color=spectrum`}
@@ -345,15 +348,47 @@ export default function AgentPage() {
                     title="Protein structure"
                   />
                 )}
+                {/* Binding site annotation panel */}
                 {activeViewerMuts.length > 0 && (
-                  <div className="absolute bottom-3 left-3 flex flex-wrap gap-1">
-                    {activeViewerMuts.map((m: any, i: number) => (
-                      <span key={i} className="text-[9px] font-mono bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
-                        {m.from}{m.position}{m.to}
-                      </span>
-                    ))}
+                  <div className="absolute top-3 right-3 w-44 bg-black/80 border border-[#222] rounded-lg p-2.5 backdrop-blur-sm text-[9px]">
+                    <div className="text-gray-500 uppercase tracking-wider font-medium mb-2">
+                      Binding Site Mutations
+                    </div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {activeViewerMuts.map((m: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="font-mono bg-red-900/40 text-red-300 px-1 py-0.5 rounded text-[8px]">
+                            {m.from}{m.position}{m.to}
+                          </span>
+                          <span className="text-gray-600 text-[8px] ml-1 truncate">
+                            {m.from !== m.to ? 'substitution' : 'conserved'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-[#1a1a1a] text-gray-600 text-[7px] leading-relaxed">
+                      Red = mutations from seed. Mutations are concentrated at predicted binding pocket residues.
+                    </div>
                   </div>
                 )}
+                {/* PDB label */}
+                <div className="absolute bottom-3 left-3 flex items-center space-x-2">
+                  <span className="text-[8px] text-gray-600 bg-black/60 px-2 py-0.5 rounded font-mono">
+                    PDB: {activeViewerPdb}
+                  </span>
+                  {activeViewerMuts.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {activeViewerMuts.slice(0, 6).map((m: any, i: number) => (
+                        <span key={i} className="text-[8px] font-mono bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
+                          {m.from}{m.position}{m.to}
+                        </span>
+                      ))}
+                      {activeViewerMuts.length > 6 && (
+                        <span className="text-[8px] text-gray-600 px-1">+{activeViewerMuts.length - 6}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -114,6 +114,76 @@ class EnergyOracle:
             "aggregation_penalty": self._compute_aggregation_penalty(sequence),
         }
 
+    def compute_kd_nM(self, binding_score: float) -> float:
+        """
+        Heuristic Kd estimate in nanomolar from a normalised binding score (0–1).
+        Calibrated so score=0.827 -> ~17 nM, score=0.50 -> ~3162 nM.
+        Not a docking-grade calculation; use as a relative ranking metric only.
+        """
+        return float(10.0 ** ((1.0 - binding_score) * 7.0))
+
+    def compute_serum_half_life(self, seq: str) -> float:
+        """
+        Heuristic serum half-life estimate in minutes.
+        Considers peptide length (longer = slower clearance), proline content
+        (protease-resistant), charged residue count, and hydrophobicity
+        (high GRAVY -> faster hepatic clearance).
+        Typical therapeutic peptides: 5–480 min in serum.
+        Heuristic only — not a PK/PD model.
+        """
+        if not seq:
+            return 5.0
+        n = len(seq)
+        base = 10.0 + n * 1.5
+        pro_bonus = seq.count("P") * 4.0
+        charged_bonus = sum(1 for aa in seq if aa in "RKDE") * 0.8
+        gravy = self._compute_gravy(seq)
+        hydro_penalty = max(0.0, gravy - 1.0) * 10.0
+        t_half = base + pro_bonus + charged_bonus - hydro_penalty
+        return float(np.clip(t_half, 2.0, 480.0))
+
+    def compute_selectivity(self, seq: str) -> float:
+        """
+        On-target / off-target binding selectivity ratio.
+
+        When pocket residues are configured and overlap with the sequence length:
+        amplifies the pocket-specific contribution to simulate recognition (each
+        matched pocket position adds 0.5x multiplier on the on/off ratio).
+
+        Falls back to a composition heuristic when no pocket positions fall within
+        the sequence length, or when no pocket is configured:
+        - aromatic residues (W/F/Y) signal specific recognition motifs → higher selectivity
+        - high GRAVY (hydrophobic) → non-specific membrane binding → lower selectivity
+
+        Ratio < 2.0 indicates High Toxicity Risk.
+        Heuristic only — not a proteome-wide binding screen.
+        """
+        if self.target_pocket_residues:
+            on_target = self._compute_binding_score(seq)
+            saved_pocket = self.target_pocket_residues
+            self.target_pocket_residues = []
+            off_target = self._compute_binding_score(seq)
+            self.target_pocket_residues = saved_pocket
+            n_matched = sum(1 for pos in saved_pocket if pos < len(seq))
+            if n_matched > 0:
+                amplification = 1.0 + n_matched * 0.5
+                selectivity = (on_target * amplification) / max(off_target, 0.01)
+                return float(np.clip(selectivity, 0.5, 20.0))
+            # Fall through to composition heuristic if no pocket residues in range
+
+        # Composition-based fallback
+        gravy = self._compute_gravy(seq)
+        n = max(len(seq), 1)
+        aromatic_ratio = sum(1 for aa in seq if aa in "WFY") / n
+        charge_mag = abs(self._compute_net_charge(seq))
+        selectivity = (
+            1.5
+            + aromatic_ratio * 4.0
+            + min(charge_mag * 0.3, 1.5)
+            - max(gravy - 2.0, 0.0) * 0.5
+        )
+        return float(np.clip(selectivity, 0.5, 10.0))
+
     def score_candidate(self, sequence: str, target_name: str) -> dict:
         energy = self.compute_energy(sequence)
         binding = self._compute_binding_score(sequence)
@@ -125,6 +195,10 @@ class EnergyOracle:
         plddt = self._compute_plddt_estimate(sequence, stability)
         novelty = self._compute_novelty_score(sequence)
         aggregation = float(np.clip(self._compute_aggregation_penalty(sequence), 0.0, 1.0))
+        kd_nm = self.compute_kd_nM(float(binding))
+        serum_half_life = self.compute_serum_half_life(sequence)
+        selectivity = self.compute_selectivity(sequence)
+        toxicity_flag = selectivity < 2.0
         return {
             "sequence": sequence,
             "binding_score": float(binding),
@@ -140,6 +214,11 @@ class EnergyOracle:
             "manufacturability_score": float(manufacturability),
             "plddt_estimate": float(plddt),
             "novelty_score": float(novelty),
+            # Pharmacokinetic estimates
+            "kd_nM": float(kd_nm),
+            "serum_half_life_min": float(serum_half_life),
+            "selectivity_ratio": float(selectivity),
+            "toxicity_flag": bool(toxicity_flag),
         }
 
     def _compute_binding_score(self, seq: str) -> float:

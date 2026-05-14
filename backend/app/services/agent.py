@@ -396,6 +396,11 @@ class ProteinDesignAgent:
             "manufacturability_score": best.get("manufacturability_score", 0),
             "plddt_estimate": best.get("plddt_estimate", 0),
             "novelty_score": best.get("novelty_score", 0),
+            # Pharmacokinetic estimates
+            "kd_nM": best.get("kd_nM", 0),
+            "serum_half_life_min": best.get("serum_half_life_min", 0),
+            "selectivity_ratio": best.get("selectivity_ratio", 1.0),
+            "toxicity_flag": best.get("toxicity_flag", False),
         }
 
     def _build_structure_url(self, pdb_id: str) -> str:
@@ -527,6 +532,12 @@ class ProteinDesignAgent:
                 "|--------|-------|----------------|",
                 "| Binding Score | {:.1f}% | Predicted affinity for {} |".format(
                     design["binding_score"] * 100, target_name),
+                "| Kd estimate | {:.0f} nM | Predicted dissociation constant |".format(
+                    design.get("kd_nM", 0)),
+                "| Serum half-life | {:.0f} min | Predicted in vivo stability |".format(
+                    design.get("serum_half_life_min", 0)),
+                "| Selectivity ratio | {:.2f}x | On-target / off-target binding |".format(
+                    design.get("selectivity_ratio", 1.0)),
                 "| Stability Score | {:.1f}% | Secondary structure propensity |".format(
                     design["stability_score"] * 100),
                 "| Solubility Score | {:.1f}% | Aqueous expression feasibility |".format(
@@ -547,6 +558,18 @@ class ProteinDesignAgent:
                     design["total_energy"]),
                 "",
             ]
+
+            # --- Toxicity warning ---
+            if design.get("toxicity_flag"):
+                result_parts.append(
+                    "**High Toxicity Risk** — Selectivity ratio {:.2f}x is below the 2.0x "
+                    "threshold. Off-target binding approaches on-target levels. "
+                    "Consider adding specificity constraints (e.g., low aggregation, "
+                    "reduced hydrophobicity) and re-running.".format(
+                        design.get("selectivity_ratio", 0.0)
+                    )
+                )
+                result_parts.append("")
 
             # --- Mutation rationale ---
             if design["mutations"]:
@@ -587,6 +610,10 @@ class ProteinDesignAgent:
                         "immunogenicity_score": design.get("immunogenicity_score", 0),
                         "manufacturability_score": design.get("manufacturability_score", 0),
                         "novelty_score": design.get("novelty_score", 0),
+                        "kd_nM": design.get("kd_nM", 0),
+                        "serum_half_life_min": design.get("serum_half_life_min", 0),
+                        "selectivity_ratio": design.get("selectivity_ratio", 1.0),
+                        "toxicity_flag": design.get("toxicity_flag", False),
                     },
                     "is_best": is_best,
                 },
@@ -616,6 +643,9 @@ class ProteinDesignAgent:
             "| Metric | Value |",
             "|--------|-------|",
             "| Binding Affinity | {:.1f}% |".format(best_round["binding_score"] * 100),
+            "| Kd estimate | {:.0f} nM |".format(best_round.get("kd_nM", 0)),
+            "| Serum half-life | {:.0f} min |".format(best_round.get("serum_half_life_min", 0)),
+            "| Selectivity ratio | {:.2f}x |".format(best_round.get("selectivity_ratio", 1.0)),
             "| Stability | {:.1f}% |".format(best_round["stability_score"] * 100),
             "| Solubility | {:.1f}% |".format(best_round["solubility_score"] * 100),
             "| pLDDT estimate | {:.1f} / 100 |".format(best_round.get("plddt_estimate", 0)),
@@ -649,15 +679,16 @@ class ProteinDesignAgent:
         report_lines += [
             "",
             "#### Iteration History",
-            "| Round | Binding | Stability | Solubility | pLDDT | ΔΔG | Energy |",
-            "|-------|---------|-----------|------------|-------|-----|--------|",
+            "| Round | Binding | Kd (nM) | Stability | Solubility | pLDDT | ΔΔG | Energy |",
+            "|-------|---------|---------|-----------|------------|-------|-----|--------|",
         ]
         for r in rounds_data:
             star = " *" if r == best_round else ""
             report_lines.append(
-                "| {}{} | {:.0f}% | {:.0f}% | {:.0f}% | {:.0f} | {:.1f} | {:.3f} |".format(
+                "| {}{} | {:.0f}% | {:.0f} | {:.0f}% | {:.0f}% | {:.0f} | {:.1f} | {:.3f} |".format(
                     r["round"], star,
                     r["binding_score"] * 100,
+                    r.get("kd_nM", 0),
                     r["stability_score"] * 100,
                     r["solubility_score"] * 100,
                     r.get("plddt_estimate", 0),
@@ -705,6 +736,10 @@ class ProteinDesignAgent:
                     "immunogenicity_score": best_round.get("immunogenicity_score", 0),
                     "manufacturability_score": best_round.get("manufacturability_score", 0),
                     "novelty_score": best_round.get("novelty_score", 0),
+                    "kd_nM": best_round.get("kd_nM", 0),
+                    "serum_half_life_min": best_round.get("serum_half_life_min", 0),
+                    "selectivity_ratio": best_round.get("selectivity_ratio", 1.0),
+                    "toxicity_flag": best_round.get("toxicity_flag", False),
                 },
                 "rounds": [
                     {
@@ -716,6 +751,10 @@ class ProteinDesignAgent:
                         "plddt_estimate": r.get("plddt_estimate", 0),
                         "ddg_estimate_kcal_mol": r.get("ddg_estimate_kcal_mol", 0),
                         "total_energy": r["total_energy"],
+                        "kd_nM": r.get("kd_nM", 0),
+                        "serum_half_life_min": r.get("serum_half_life_min", 0),
+                        "selectivity_ratio": r.get("selectivity_ratio", 1.0),
+                        "toxicity_flag": r.get("toxicity_flag", False),
                         "is_best": r == best_round,
                     }
                     for r in rounds_data
@@ -740,6 +779,10 @@ class ProteinDesignAgent:
                 "immunogenicity_score": best_round.get("immunogenicity_score", 0),
                 "manufacturability_score": best_round.get("manufacturability_score", 0),
                 "novelty_score": best_round.get("novelty_score", 0),
+                "kd_nM": best_round.get("kd_nM", 0),
+                "serum_half_life_min": best_round.get("serum_half_life_min", 0),
+                "selectivity_ratio": best_round.get("selectivity_ratio", 1.0),
+                "toxicity_flag": best_round.get("toxicity_flag", False),
             },
             pdb_id=pdb_id,
             mutations=best_round["mutations"],
