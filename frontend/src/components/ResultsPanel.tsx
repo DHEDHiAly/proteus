@@ -19,13 +19,15 @@ interface ResultsPanelProps {
   seed?: string;
   onInspect: (seq: string) => void;
   onExport: (seq: string, format: string) => void;
+  onSave?: (candidate: Candidate) => void;
 }
 
-export default function ResultsPanel({ candidates, seed, onInspect, onExport }: ResultsPanelProps) {
+export default function ResultsPanel({ candidates, seed, onInspect, onExport, onSave }: ResultsPanelProps) {
   const [sortBy, setSortBy] = useState<'binding_score' | 'stability_score' | 'total_energy'>('binding_score');
   const [filterText, setFilterText] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; seq: string } | null>(null);
+  const [savedRanks, setSavedRanks] = useState<Set<number>>(new Set());
 
   const sorted = [...candidates]
     .filter((c) => !filterText || c.sequence.includes(filterText.toUpperCase()))
@@ -131,6 +133,23 @@ export default function ResultsPanel({ candidates, seed, onInspect, onExport }: 
                 className="px-1.5 py-0.5 rounded bg-[#1a1a1a] text-gray-400 hover:text-white text-[8px]">
                 ↓
               </button>
+              {onSave && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSave(c);
+                    setSavedRanks((prev) => new Set([...prev, c.rank]));
+                  }}
+                  disabled={savedRanks.has(c.rank)}
+                  className={`px-1.5 py-0.5 rounded text-[8px] transition-all ${
+                    savedRanks.has(c.rank)
+                      ? 'bg-[#1a1a1a] text-green-700 cursor-default'
+                      : 'bg-[#1a1a1a] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {savedRanks.has(c.rank) ? '✓' : 'Save'}
+                </button>
+              )}
             </div>
           </div>
         ))}

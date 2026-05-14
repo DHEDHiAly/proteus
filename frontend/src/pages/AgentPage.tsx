@@ -10,6 +10,8 @@ import DesignCycleSummary from '../components/DesignCycleSummary';
 import BenchmarkGraphs from '../components/BenchmarkGraphs';
 import CommandPalette, { useCommandPalette } from '../components/CommandPalette';
 import OptimizationTrace from '../components/OptimizationTrace';
+import { savedDesignsService } from '../services/savedDesigns';
+import type { SavedDesign } from '../services/savedDesigns';
 
 type Candidate = {
   rank: number; sequence: string; binding_score: number;
@@ -19,8 +21,9 @@ type Candidate = {
 };
 
 // ── Simplified message renderer ──────────────────────────────────────────────
-function AgentMessageCard({ msg }: { msg: AgentMessage }) {
+function AgentMessageCard({ msg, onSave }: { msg: AgentMessage; onSave?: (best: any, target: string) => void }) {
   const d = msg.data;
+  const [saved, setSaved] = useState(false);
 
   // User bubble
   if (msg.role === 'user') {
@@ -162,7 +165,22 @@ function AgentMessageCard({ msg }: { msg: AgentMessage }) {
       <div className="rounded-lg border border-green-900/40 bg-green-950/10 overflow-hidden">
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-green-900/20">
           <span className="text-[9px] text-green-500 uppercase tracking-wider font-medium">Design Complete</span>
-          <span className="text-[9px] text-gray-600">{totalRounds} rounds · {d.total_time?.toFixed(1)}s</span>
+          <div className="flex items-center space-x-2">
+            <span className="text-[9px] text-gray-600">{totalRounds} rounds · {d.total_time?.toFixed(1)}s</span>
+            {onSave && (
+              <button
+                onClick={() => { onSave(best, d.target || ''); setSaved(true); }}
+                disabled={saved}
+                className={`text-[8px] px-2 py-0.5 rounded border transition-all ${
+                  saved
+                    ? 'border-green-900/50 text-green-600 cursor-default'
+                    : 'border-[#333] text-gray-500 hover:text-white hover:border-[#555]'
+                }`}
+              >
+                {saved ? 'Saved' : 'Save'}
+              </button>
+            )}
+          </div>
         </div>
         {/* Gate indicators row */}
         {(gate1 !== undefined || gate2 !== undefined || gate3 !== undefined) && (
@@ -502,6 +520,46 @@ export default function AgentPage() {
     a.click();
   };
 
+  const handleSaveDesign = (best: any, target: string) => {
+    const designTarget = target || patient?.tumor_markers || patient?.cancer_type || 'Unknown';
+    const name = `${designTarget} · ${new Date().toLocaleDateString()}`;
+    savedDesignsService.save({
+      name,
+      target: designTarget,
+      sequence: best.sequence || '',
+      bindingScore: best.binding_score ?? 0,
+      kd_nM: best.kd_nM,
+      stabilityScore: best.stability_score ?? 0,
+      solubilityScore: best.solubility_score ?? 0,
+      totalEnergy: best.total_energy,
+      labViabilityScore: best.lab_viability_score,
+      selectivityRatio: best.selectivity_ratio,
+      serumHalfLifeMin: best.serum_half_life_min,
+      patient: patient
+        ? { cancerType: patient.cancer_type, cancerStage: patient.cancer_stage }
+        : undefined,
+    });
+  };
+
+  const handleSaveCandidate = (c: Candidate) => {
+    const designTarget = patient?.tumor_markers || patient?.cancer_type || 'Unknown';
+    savedDesignsService.save({
+      name: `${designTarget} · Rank ${c.rank} · ${new Date().toLocaleDateString()}`,
+      target: designTarget,
+      sequence: c.sequence,
+      bindingScore: c.binding_score,
+      kd_nM: c.kd_nM,
+      stabilityScore: c.stability_score,
+      solubilityScore: c.solubility_score,
+      totalEnergy: c.total_energy,
+      selectivityRatio: c.selectivity_ratio,
+      serumHalfLifeMin: c.serum_half_life_min,
+      patient: patient
+        ? { cancerType: patient.cancer_type, cancerStage: patient.cancer_stage }
+        : undefined,
+    });
+  };
+
   const paletteCommands = [
     { id: 'new-run', label: 'New design run', category: 'Run', action: () => { setMode('landing'); setMessages([]); setCandidates([]); } },
     { id: 'compare', label: 'Toggle comparison mode', category: 'View', action: () => setComparisonMode((p) => !p) },
@@ -694,7 +752,7 @@ export default function AgentPage() {
                   </div>
                 )}
                 {messages.map((msg, i) => (
-                  <AgentMessageCard key={i} msg={msg} />
+                  <AgentMessageCard key={i} msg={msg} onSave={handleSaveDesign} />
                 ))}
                 <div ref={chatEnd} />
               </div>
@@ -790,6 +848,7 @@ export default function AgentPage() {
                 if (c) setActiveViewerMuts(seed ? seed.split('').map((a, i) => ({ from: a, to: seq[i] || a, position: i + 1 })).filter((m) => m.from !== m.to) : []);
               }}
               onExport={handleExport}
+              onSave={handleSaveCandidate}
             />
           </div>
         </aside>
