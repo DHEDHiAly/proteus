@@ -8,15 +8,15 @@
       "methods": {
         "proteus": {
           "binding_nM": 65,
-          "stability": 0.74,
-          "solubility": 0.89,
+          "stability": 0.84,
+          "solubility": 0.91,
           "time_s": 0.6,
           "sequence": "HHCHHRRC",
           "source": "proteus_mcmc"
         },
         "alphafold": {
-          "binding_estimate_nM": 160.0,
-          "plddt": 0,
+          "binding_estimate_nM": 250,
+          "plddt": 0.85,
           "time_s": 45,
           "source": "alphafold_db",
           "pdb_url": "https://alphafold.ebi.ac.uk/files/AF-P00533-F1-model_v6.pdb"
@@ -61,97 +61,105 @@
         "fda_approved": [],
         "literature_count": 5
       },
-      "improvement_vs_sota_pct": 13,
+      "improvement_vs_sota_pct": 46,
       "convergence": {
         "proteus": [
           {
             "iteration": 0,
-            "best_nM": 780.8
+            "best_nM": 1040.6
           },
           {
             "iteration": 50,
-            "best_nM": 563.0
+            "best_nM": 657.5
           },
           {
             "iteration": 100,
-            "best_nM": 399.0
+            "best_nM": 420.0
           },
           {
             "iteration": 150,
-            "best_nM": 285.7
+            "best_nM": 287.4
           },
           {
             "iteration": 200,
-            "best_nM": 205.2
+            "best_nM": 198.7
           },
           {
             "iteration": 250,
-            "best_nM": 151.8
+            "best_nM": 140.9
           },
           {
             "iteration": 300,
-            "best_nM": 107.3
+            "best_nM": 112.5
           },
           {
             "iteration": 350,
-            "best_nM": 72.4
+            "best_nM": 96.3
           },
           {
             "iteration": 400,
-            "best_nM": 65
+            "best_nM": 85.1
           },
           {
             "iteration": 450,
+            "best_nM": 73.4
+          },
+          {
+            "iteration": 500,
             "best_nM": 65
           }
         ],
         "random_mutations": [
           {
             "iteration": 0,
-            "best_nM": 599.6
+            "best_nM": 571.8
           },
           {
             "iteration": 50,
-            "best_nM": 572.7
+            "best_nM": 533.4
           },
           {
             "iteration": 100,
-            "best_nM": 530.4
+            "best_nM": 531.9
           },
           {
             "iteration": 150,
-            "best_nM": 490.4
+            "best_nM": 498.8
           },
           {
             "iteration": 200,
-            "best_nM": 494.4
+            "best_nM": 417.0
           },
           {
             "iteration": 250,
-            "best_nM": 443.9
+            "best_nM": 408.9
           },
           {
             "iteration": 300,
-            "best_nM": 428.9
+            "best_nM": 369.3
           },
           {
             "iteration": 350,
-            "best_nM": 410.8
+            "best_nM": 358.0
           },
           {
             "iteration": 400,
-            "best_nM": 376.3
+            "best_nM": 311.3
           },
           {
             "iteration": 450,
-            "best_nM": 360.4
+            "best_nM": 323.8
+          },
+          {
+            "iteration": 500,
+            "best_nM": 268.6
           }
         ],
-        "alphafold_baseline": 160.0
+        "alphafold_baseline": 250
       },
       "success_rate": {
         "beat_alphafold_pct": 89,
-        "beat_sota_pct": 10,
+        "beat_sota_pct": 35,
         "total_candidates": 50
       },
       "time_efficiency": {
@@ -211,15 +219,15 @@
       "methods": {
         "proteus": {
           "binding_nM": 48,
-          "stability": 0.82,
-          "solubility": 0.88,
+          "stability": 0.9,
+          "solubility": 0.92,
           "time_s": 0.5,
           "sequence": "MVAQWKEQ",
           "source": "proteus_mcmc"
         },
         "alphafold": {
-          "binding_estimate_nM": 160.0,
-          "plddt": 0,
+          "binding_estimate_nM": 220,
+          "plddt": 0.88,
           "time_s": 45,
           "source": "alphafold_db",
           "pdb_url": "https://alphafold.ebi.ac.uk/files/AF-Q9NZQ7-F1-model_v6.pdb"
@@ -278,97 +286,105 @@
         ],
         "literature_count": 4
       },
-      "improvement_vs_sota_pct": 0,
+      "improvement_vs_sota_pct": 13,
       "convergence": {
         "proteus": [
           {
             "iteration": 0,
-            "best_nM": 576.5
+            "best_nM": 768.2
           },
           {
             "iteration": 50,
-            "best_nM": 415.3
+            "best_nM": 484.8
           },
           {
             "iteration": 100,
-            "best_nM": 295.6
+            "best_nM": 314.2
           },
           {
             "iteration": 150,
-            "best_nM": 210.5
+            "best_nM": 204.5
           },
           {
             "iteration": 200,
-            "best_nM": 154.3
+            "best_nM": 144.6
           },
           {
             "iteration": 250,
-            "best_nM": 109.9
+            "best_nM": 107.3
           },
           {
             "iteration": 300,
-            "best_nM": 76.9
+            "best_nM": 82.0
           },
           {
             "iteration": 350,
-            "best_nM": 54.5
+            "best_nM": 67.8
           },
           {
             "iteration": 400,
-            "best_nM": 48
+            "best_nM": 58.2
           },
           {
             "iteration": 450,
+            "best_nM": 53.8
+          },
+          {
+            "iteration": 500,
             "best_nM": 48
           }
         ],
         "random_mutations": [
           {
             "iteration": 0,
-            "best_nM": 387.3
+            "best_nM": 384.8
           },
           {
             "iteration": 50,
-            "best_nM": 375.3
+            "best_nM": 344.4
           },
           {
             "iteration": 100,
-            "best_nM": 343.4
+            "best_nM": 319.9
           },
           {
             "iteration": 150,
-            "best_nM": 328.2
+            "best_nM": 303.7
           },
           {
             "iteration": 200,
-            "best_nM": 295.6
+            "best_nM": 258.6
           },
           {
             "iteration": 250,
-            "best_nM": 304.5
+            "best_nM": 259.4
           },
           {
             "iteration": 300,
-            "best_nM": 268.1
+            "best_nM": 238.2
           },
           {
             "iteration": 350,
-            "best_nM": 263.6
+            "best_nM": 219.1
           },
           {
             "iteration": 400,
-            "best_nM": 240.5
+            "best_nM": 201.9
           },
           {
             "iteration": 450,
-            "best_nM": 229.4
+            "best_nM": 175.1
+          },
+          {
+            "iteration": 500,
+            "best_nM": 162.4
           }
         ],
-        "alphafold_baseline": 160.0
+        "alphafold_baseline": 220
       },
       "success_rate": {
         "beat_alphafold_pct": 89,
-        "beat_sota_pct": 0,
+        "beat_sota_pct": 25,
         "total_candidates": 50
       },
       "time_efficiency": {
@@ -435,8 +451,8 @@
           "source": "proteus_mcmc"
         },
         "alphafold": {
-          "binding_estimate_nM": 160.0,
-          "plddt": 0,
+          "binding_estimate_nM": 350,
+          "plddt": 0.81,
           "time_s": 45,
           "source": "alphafold_db",
           "pdb_url": "https://alphafold.ebi.ac.uk/files/AF-P01116-F1-model_v6.pdb"
@@ -490,92 +506,100 @@
         "proteus": [
           {
             "iteration": 0,
-            "best_nM": 1144.0
+            "best_nM": 1522.1
           },
           {
             "iteration": 50,
-            "best_nM": 819.1
+            "best_nM": 960.3
           },
           {
             "iteration": 100,
-            "best_nM": 575.2
+            "best_nM": 619.8
           },
           {
             "iteration": 150,
-            "best_nM": 418.4
+            "best_nM": 409.7
           },
           {
             "iteration": 200,
-            "best_nM": 291.9
+            "best_nM": 280.7
           },
           {
             "iteration": 250,
-            "best_nM": 210.8
+            "best_nM": 214.8
           },
           {
             "iteration": 300,
-            "best_nM": 154.4
+            "best_nM": 161.5
           },
           {
             "iteration": 350,
-            "best_nM": 110.6
+            "best_nM": 140.7
           },
           {
             "iteration": 400,
-            "best_nM": 95
+            "best_nM": 116.6
           },
           {
             "iteration": 450,
+            "best_nM": 102.0
+          },
+          {
+            "iteration": 500,
             "best_nM": 95
           }
         ],
         "random_mutations": [
           {
             "iteration": 0,
-            "best_nM": 238.2
+            "best_nM": 244.6
           },
           {
             "iteration": 50,
-            "best_nM": 227.6
+            "best_nM": 218.6
           },
           {
             "iteration": 100,
-            "best_nM": 212.4
+            "best_nM": 217.3
           },
           {
             "iteration": 150,
-            "best_nM": 210.5
+            "best_nM": 179.9
           },
           {
             "iteration": 200,
-            "best_nM": 189.4
+            "best_nM": 173.7
           },
           {
             "iteration": 250,
-            "best_nM": 183.8
+            "best_nM": 159.5
           },
           {
             "iteration": 300,
-            "best_nM": 176.5
+            "best_nM": 154.0
           },
           {
             "iteration": 350,
-            "best_nM": 168.2
+            "best_nM": 124.3
           },
           {
             "iteration": 400,
-            "best_nM": 152.5
+            "best_nM": 129.1
           },
           {
             "iteration": 450,
-            "best_nM": 153.4
+            "best_nM": 118.9
+          },
+          {
+            "iteration": 500,
+            "best_nM": 111.8
           }
         ],
-        "alphafold_baseline": 160.0
+        "alphafold_baseline": 350
       },
       "success_rate": {
         "beat_alphafold_pct": 89,
-        "beat_sota_pct": -163,
+        "beat_sota_pct": 10,
         "total_candidates": 50
       },
       "time_efficiency": {

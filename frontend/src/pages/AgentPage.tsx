@@ -219,9 +219,9 @@ export default function AgentPage() {
             <div className="border-t border-[#1a1a1a] pt-6">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Proteus vs Other Methods</h2>
-                <span className="text-[9px] text-gray-600">Benchmark data across oncology targets</span>
+                <a href="/benchmarks" className="text-[9px] text-gray-600 hover:text-white transition-colors underline">View full dashboard →</a>
               </div>
-              <BenchmarkGraphs targetName="EGFRvIII" />
+              <BenchmarkGraphs />
             </div>
           </div>
 
