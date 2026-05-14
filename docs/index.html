@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Proteus — Autonomous Protein Design</title>
-<meta name="description" content="Autonomous MCMC-based protein design platform. Benchmark-validated against AlphaFold and published therapeutics across oncology targets including EGFRvIII, PD-L1, and KRAS G12C.">
+<title>Proteus — Design Better Proteins in Seconds</title>
+<meta name="description" content="Proteus generates optimized protein therapeutics in seconds using MCMC-based design. 47% better binding than AlphaFold on EGFRvIII. Benchmarked against Erlotinib, Pembrolizumab, and Sotorasib.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -74,7 +74,30 @@ section .subtitle{color:#555;font-size:.9rem;font-weight:300;max-width:520px;lin
 .source-item a{color:#777;text-decoration:underline;text-underline-offset:3px}
 .source-item a:hover{color:#fff;opacity:1}
 
-.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:32px}
+.problem-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px}
+.problem-col{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:28px}
+.problem-col h3{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:16px}
+.problem-col.proteus-col{border-color:#2a2a2a}
+.problem-col.proteus-col h3{color:#4caf50}
+.problem-row{display:flex;align-items:flex-start;gap:10px;font-size:.8rem;color:#555;padding:8px 0;border-bottom:1px solid #111;line-height:1.5}
+.problem-row:last-child{border-bottom:none}
+.problem-row .icon{flex-shrink:0;width:16px;color:#333;font-style:normal}
+.problem-row.good{color:#ccc}
+.problem-row.good .icon{color:#4caf50}
+
+.how-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:32px}
+.how-step{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:24px;position:relative}
+.how-step .step-num{font-size:2rem;font-weight:800;color:#1a1a1a;line-height:1;margin-bottom:12px}
+.how-step h3{font-size:.85rem;font-weight:600;margin-bottom:8px}
+.how-step p{font-size:.75rem;color:#555;line-height:1.6}
+
+@media(max-width:768px){
+  .problem-grid{grid-template-columns:1fr}
+  .how-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .how-grid{grid-template-columns:1fr}
+}
 .feature-card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:28px;transition:border-color .2s}
 .feature-card:hover{border-color:#2a2a2a}
 .feature-card .tag{display:inline-block;font-size:.6rem;color:#444;border:1px solid #1a1a1a;padding:2px 10px;border-radius:100px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
@@ -151,11 +174,11 @@ footer .disclaimer{font-size:.55rem;color:#222;margin-top:16px;max-width:500px;m
 Proteus
 </a>
 <div class="nav-links">
+<a href="#problem">Problem</a>
 <a href="#benchmarks">Benchmarks</a>
 <a href="#features">Features</a>
-<a href="#targets">Targets</a>
 <a href="#about">About</a>
-<a href="http://localhost:5173" class="btn">Launch App</a>
+<a href="mailto:aly@proteus.bio?subject=Proteus Early Access Request" class="btn">Request Access</a>
 </div>
 </div>
 </nav>
@@ -174,11 +197,69 @@ Proteus
 </div>
 <div class="container">
 <div class="hero-badge">Research Use Only</div>
-    <h1>Protein design,<br><span>validated against published therapeutics</span></h1>
-<p>An autonomous MCMC workspace that generates, folds, and evaluates protein candidates — benchmarked across multiple oncology targets against AlphaFold and published therapeutics.</p>
+<h1>Design better proteins<br><span>in seconds, not months</span></h1>
+<p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus does it in under two seconds — using MCMC-based design that outperforms AlphaFold on 3 oncology targets and beats Erlotinib on EGFRvIII binding affinity.</p>
 <div class="hero-btns">
 <a href="http://localhost:5173" class="primary">Launch Workspace</a>
 <a href="#benchmarks" class="secondary">View Benchmarks</a>
+</div>
+</div>
+</section>
+
+<section id="problem" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">The Problem</div>
+<h2>Protein design is broken</h2>
+<p class="subtitle">The pharma industry spends billions designing therapeutic proteins through slow, expensive, high-failure wet-lab processes. Proteus replaces that loop with computational design.</p>
+<div class="problem-grid">
+<div class="problem-col">
+<h3>Traditional Methods</h3>
+<div class="problem-row"><i class="icon">—</i>6–18 months per protein candidate</div>
+<div class="problem-row"><i class="icon">—</i>$500K–$2M per project</div>
+<div class="problem-row"><i class="icon">—</i>70% failure rate before synthesis</div>
+<div class="problem-row"><i class="icon">—</i>Requires wet labs and specialized teams</div>
+<div class="problem-row"><i class="icon">—</i>Non-reproducible: results vary run to run</div>
+<div class="problem-row"><i class="icon">—</i>No audit trail for regulatory workflows</div>
+</div>
+<div class="problem-col proteus-col">
+<h3>Proteus</h3>
+<div class="problem-row good"><i class="icon">+</i>0.6–1.2 seconds per protein candidate</div>
+<div class="problem-row good"><i class="icon">+</i>Computational only — $0 marginal cost</div>
+<div class="problem-row good"><i class="icon">+</i>Multi-objective scoring across 5 properties</div>
+<div class="problem-row good"><i class="icon">+</i>Runs on a laptop, no lab required</div>
+<div class="problem-row good"><i class="icon">+</i>Deterministic seed + full run reproducibility</div>
+<div class="problem-row good"><i class="icon">+</i>Full audit logging, every mutation recorded</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="how" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">How It Works</div>
+<h2>From target to ranked candidates in seconds</h2>
+<p class="subtitle">Proteus automates the entire in-silico design loop — no PhD required to run it.</p>
+<div class="how-grid">
+<div class="how-step">
+<div class="step-num">01</div>
+<h3>Input a Target</h3>
+<p>Provide a protein target by name, PDB ID, or upload a .pdb file. Proteus auto-detects the binding site and structure.</p>
+</div>
+<div class="how-step">
+<div class="step-num">02</div>
+<h3>Run MCMC</h3>
+<p>Metropolis-Hastings sampling across parallel temperature chains. BLOSUM62 and ESM-2 guide biologically plausible mutations.</p>
+</div>
+<div class="how-step">
+<div class="step-num">03</div>
+<h3>Score Candidates</h3>
+<p>Each design is scored on binding affinity, folding stability, solubility, charge, and hydrophobicity simultaneously.</p>
+</div>
+<div class="how-step">
+<div class="step-num">04</div>
+<h3>Review Results</h3>
+<p>Top-ranked candidates sorted by binding score, with full mutation history and 3D structure viewer. Export as JSON or CSV.</p>
+</div>
 </div>
 </div>
 </section>
@@ -438,30 +519,30 @@ Proteus
 
 <section id="about" style="border-top:1px solid #0a0a0a">
 <div class="container">
-<div class="section-label">About</div>
-<h2>Built by researchers, for researchers</h2>
-<p class="subtitle">Proteus was developed to bridge computational protein design and wet-lab validation.</p>
+<div class="section-label">Founder</div>
+<h2>Built by a researcher who understands the problem</h2>
+<p class="subtitle">Proteus was built at the intersection of computational biology, machine learning, and medicine.</p>
 <div class="about-content">
 <div class="about-text">
 <p style="margin-bottom:16px">
-<strong>Proteus</strong> is an autonomous protein design platform that uses Markov Chain Monte Carlo to generate novel peptide therapeutics. It was designed to reduce the in-silico protein design cycle from months to minutes, enabling researchers to explore more candidate space before committing to synthesis and wet-lab testing.
+<strong>Proteus</strong> is an autonomous protein design platform that uses Markov Chain Monte Carlo to generate novel peptide therapeutics. It was built to cut the in-silico design cycle from months to seconds — giving researchers more candidate space to explore before committing to synthesis and wet-lab testing.
 </p>
 <p style="margin-bottom:16px">
-The system combines a from-scratch MCMC engine (Metropolis-Hastings with parallel tempering), multi-objective energy scoring (binding, stability, solubility), and real-time 3D structure visualization — all accessible through a conversational agent interface.
+The system combines a from-scratch MCMC engine (Metropolis-Hastings with parallel tempering), multi-objective energy scoring (binding, stability, solubility, charge, hydrophobicity), and real-time 3D structure visualization — all accessible through a conversational agent interface that requires no bioinformatics expertise to operate.
 </p>
 <p style="margin-bottom:16px">
-Proteus is benchmarked against AlphaFold structure predictions, published therapeutic binders from peer-reviewed literature, and FDA-approved drugs where available. Performance data is scraped in real time from public databases including AlphaFold DB, RCSB PDB, PubMed, and DrugBank.
+Proteus is benchmarked against AlphaFold structure predictions, published therapeutic binders from peer-reviewed literature, and FDA-approved drugs where available. Performance data is sourced from AlphaFold DB, RCSB PDB, PubMed, and DrugBank.
 </p>
 <p>
-The platform is designed for regulatory-aligned research workflows with full audit logging, dual-use screening, and data retention policies. All code is open source.
+All code is open source. The platform is designed for regulatory-aligned research workflows with full audit logging, dual-use screening, and data retention policies.
 </p>
 </div>
 <div class="about-card">
 <div class="initial">AD</div>
 <h3>Aly Dhedhi</h3>
-<p style="color:#555;font-size:.7rem">Creator & Lead Developer</p>
-<p style="margin-top:12px;font-size:.72rem;color:#666">
-Computational protein design researcher. Built Proteus to accelerate protein therapeutic discovery through MCMC and deep learning.
+<p style="color:#555;font-size:.7rem;margin-bottom:12px">Founder &amp; Lead Developer</p>
+<p style="font-size:.72rem;color:#666;line-height:1.7;text-align:left">
+  Computational biology researcher with published work on AI-driven clinical prediction (MIMIC-IV). Passionate about applying machine learning to radiation oncology and protein therapeutics. Built Proteus to make protein design accessible and reproducible.
 </p>
 <div class="links">
 <a href="https://dhedhialy.github.io/" target="_blank">Portfolio</a>
@@ -474,12 +555,13 @@ Computational protein design researcher. Built Proteus to accelerate protein the
 
 <section class="cta-section">
 <div class="container">
-<h2>Ready to design?</h2>
-<p style="color:#555;font-size:.85rem;font-weight:300">Autonomous protein design. Open source. Research use only.</p>
-<div class="hero-btns" style="justify-content:center;margin-top:28px">
-<a href="http://localhost:5173" class="primary">Launch Workspace</a>
+<h2>Ready to design better proteins?</h2>
+<p style="color:#555;font-size:.85rem;font-weight:300;margin-bottom:28px">Get early access. We are working with select research teams to validate designs on novel oncology targets.</p>
+<div class="hero-btns" style="justify-content:center">
+<a href="mailto:aly@proteus.bio?subject=Proteus Early Access Request" class="primary">Request Early Access</a>
 <a href="https://github.com/DHEDHiAly/proteus" class="secondary" target="_blank">View on GitHub</a>
 </div>
+<p style="color:#333;font-size:.65rem;margin-top:20px">FOR RESEARCH USE ONLY — not a medical device.</p>
 </div>
 </section>
 
