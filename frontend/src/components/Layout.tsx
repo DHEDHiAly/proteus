@@ -3,9 +3,9 @@ import { useAuth } from '../hooks/useAuth'
 import clsx from 'clsx'
 
 const navItems = [
-  { path: '/agent', label: 'Workspace', icon: 'P' },
-  { path: '/benchmarks', label: 'Benchmarks', icon: '📊' },
-  { path: '/dashboard', label: 'History', icon: '◈' },
+  { path: '/agent', label: 'Workspace', icon: 'WS' },
+  { path: '/benchmarks', label: 'Benchmarks', icon: 'BM' },
+  { path: '/dashboard', label: 'History', icon: 'HI' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {

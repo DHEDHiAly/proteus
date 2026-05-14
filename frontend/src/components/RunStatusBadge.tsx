@@ -10,11 +10,11 @@ const statusStyles: Record<RunStatus, string> = {
 }
 
 const statusIcons: Record<RunStatus, string> = {
-  queued: '○',
-  running: '●',
-  completed: '✓',
-  failed: '✗',
-  cancelled: '⊘',
+  queued: 'o',
+  running: '*',
+  completed: '+',
+  failed: '-',
+  cancelled: '/',
 }
 
 export default function RunStatusBadge({ status }: { status: RunStatus }) {

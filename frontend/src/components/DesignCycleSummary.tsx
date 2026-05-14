@@ -31,7 +31,7 @@ export default function DesignCycleSummary({ rounds, totalTime, targetName }: De
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2 pb-2 border-b border-[#1a1a1a]">
-        <span>📋 Design Cycle — {rounds.length} rounds · {totalTime.toFixed(1)}s · Target: {targetName}</span>
+        <span>Design Cycle — {rounds.length} rounds · {totalTime.toFixed(1)}s · Target: {targetName}</span>
         <span className="text-white font-medium">Best: {(bestRound.binding_score * 100).toFixed(1)}%</span>
       </div>
 
@@ -68,7 +68,7 @@ export default function DesignCycleSummary({ rounds, totalTime, targetName }: De
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                {isBest && <span className="text-[9px] text-yellow-500">★</span>}
+                {isBest && <span className="text-[9px] text-yellow-500">*</span>}
                 <span className={`text-[9px] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''} text-gray-600`}>▾</span>
               </div>
             </div>
