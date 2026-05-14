@@ -431,7 +431,11 @@ export default function AgentPage() {
 
     try {
       const res = await agentApi.design(patient, input);
-      setMessages(res.data.messages);
+      // Only append agent messages — the user message was already added optimistically
+      // above, and the backend echoes it back as messages[0] which would cause a duplicate.
+      // Also preserves full conversation history across turns.
+      const agentMessages = res.data.messages.filter((m) => m.role === 'agent');
+      setMessages((prev) => [...prev, ...agentMessages]);
       setIsRunning(false);
       if (res.data.run_id) setCurrentRunId(res.data.run_id);
 

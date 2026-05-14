@@ -436,6 +436,195 @@ def _parse_constraints(message: str, notes: str = "") -> Dict:
     return constraints
 
 
+# Triggers that indicate the user wants a new design run (override question detection)
+_DESIGN_TRIGGERS = [
+    r'\bdesign\b', r'\boptimize\b', r'\bgenerate\b', r'\bcreate\b',
+    r'\brun\s+(mcmc|again|another|more|a\s+new)\b',
+    r'\bmake\s+.{0,20}(protein|peptide|sequence|candidate)\b',
+    r'\bfind\s+.{0,20}(binder|sequence|candidate)\b',
+    r'\btry\s+(again|another|with|a\s+different)\b',
+    r'\bstart\s+(over|again|a\s+new)\b',
+    r'\bnew\s+candidate\b|\bnew\s+sequence\b',
+]
+
+# Knowledge base: (pattern, answer)
+_QA_PAIRS = [
+    (
+        r'\bdelta\s*g\b|binding\s+free\s+energ|\bdg\b.*\bbinding\b',
+        "**ΔG Binding (Free Energy of Binding)**\n\n"
+        "ΔG is the Gibbs free energy change upon binding, in kcal/mol. Negative = spontaneous:\n"
+        "- < −9 kcal/mol: strong binder\n"
+        "- −7 to −9: good binder\n"
+        "- −6 to −7: promising (AutoDock Vina lab-worthy threshold)\n"
+        "- > −6: weak binder\n\n"
+        "Calculated as ΔG = RT·ln(Kd), where R = 1.987 cal/mol·K and T = 310 K (body temp)."
+    ),
+    (
+        r'\bkd\b|\bdissociation\s+constant\b|\bbinding\s+affinity\b',
+        "**Kd (Dissociation Constant / Binding Affinity)**\n\n"
+        "Kd is the equilibrium dissociation constant — lower = stronger binding:\n"
+        "- < 1 nM: ultra-high affinity\n"
+        "- 1–10 nM: very high affinity (drug-like)\n"
+        "- 10–100 nM: high affinity\n"
+        "- 100–1000 nM: moderate\n"
+        "- > 1 μM: weak binder\n\n"
+        "Proteus estimates Kd via ΔG = RT·ln(Kd) from the multi-objective energy oracle."
+    ),
+    (
+        r'\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+proteus\s+work',
+        "**How Proteus MCMC Works**\n\n"
+        "Proteus runs Metropolis-Hastings MCMC across parallel temperature chains:\n"
+        "- Multiple chains run simultaneously at temperatures 0.5 → 10\n"
+        "- Each step proposes a mutation (point substitution, insertion, deletion, or block swap)\n"
+        "- Mutations are accepted if they improve the score, or stochastically at higher temperatures\n"
+        "- Low temperatures (0.5) fine-tune; high temperatures (10) explore broadly\n"
+        "- R-hat < 1.05 indicates convergence; ESS measures mixing quality\n"
+        "- Best candidate from all chains across all steps is returned"
+    ),
+    (
+        r'\bplddt\b|structural\s+confidence|structure\s+order',
+        "**pLDDT Estimate**\n\n"
+        "pLDDT (predicted Local Distance Difference Test) is a structural confidence score (0–100) "
+        "used by AlphaFold. Proteus computes a proxy from sequence composition:\n"
+        "- > 90: very high confidence (ordered)\n"
+        "- 70–90: confident\n"
+        "- 50–70: low confidence (may be partly disordered)\n"
+        "- < 50: very low (likely disordered)"
+    ),
+    (
+        r'\bstabilit\b|\bddg\b|thermostab',
+        "**Stability Score & ΔΔG**\n\n"
+        "- **Stability Score**: Secondary structure propensity (helix + sheet content). "
+        "Higher = more structured. Alpha-helical residues (A, E, L, K, M) increase this; "
+        "Gly and Pro reduce it.\n"
+        "- **ΔΔG estimate**: Thermodynamic stability vs. unfolded state (kcal/mol). "
+        "Negative = more stable than unfolded."
+    ),
+    (
+        r'\bsolubil\b',
+        "**Solubility Score**\n\n"
+        "Estimated from GRAVY score and charged residue fraction:\n"
+        "- High D/E/K/R content → more soluble\n"
+        "- High I/L/F/V/W/M content → less soluble\n"
+        "- GRAVY > 1.5 → 'Grease Ball' warning\n"
+        "- Hydrophobic stretch ≥ 4 residues → aggregation warning\n"
+        "Use 'high solubility' constraint to rebalance the energy oracle."
+    ),
+    (
+        r'\bselectivit\b|off.target|on.target',
+        "**Selectivity**\n\n"
+        "Selectivity ratio = on-target binding / off-target binding:\n"
+        "- > 5x: highly selective\n"
+        "- 2–5x: acceptable\n"
+        "- < 2x: toxicity flag raised\n\n"
+        "Selectivity ΔΔG = ΔG(on-target) − ΔG(off-target). Positive = on-target preferred."
+    ),
+    (
+        r'\bgate\s*[123]\b|triple.gate|enthalpic|solvation\s+gate|entropic\s+penalt',
+        "**Triple-Gate Physics Model**\n\n"
+        "Three physical barriers a binder must clear:\n\n"
+        "- **Gate 1 — Enthalpic Locking**: Surface complementarity Sc ≥ 0.4 = PASS. "
+        "Geometric fit between ligand and pocket.\n"
+        "- **Gate 2 — Solvation**: ΔG_solv ≤ 0 kcal/mol = PASS. "
+        "Burial gains must exceed desolvation cost.\n"
+        "- **Gate 3 — Entropic Penalty**: −TΔS ≤ 3.5 kcal/mol = PASS. "
+        "Excessive flexibility penalized.\n\n"
+        "Lab Viability Score (0–100) = weighted combination of all gates + ΔG + selectivity. ≥ 60 = lab-worthy."
+    ),
+    (
+        r'\blab\s+viabilit\b|lab.worth',
+        "**Lab Viability Score (0–100)**\n\n"
+        "Composite score aggregating all Triple-Gate checks:\n"
+        "- ΔG < −6 kcal/mol\n"
+        "- Gate 1: Sc ≥ 0.4\n"
+        "- Gate 2: ΔG_solv ≤ 0\n"
+        "- Gate 3: −TΔS ≤ 3.5 kcal/mol\n"
+        "- Selectivity ratio ≥ 2x\n\n"
+        "≥ 70: proceed to synthesis. 50–70: address failing gates. < 50: significant optimization needed."
+    ),
+    (
+        r'\br.hat\b|rhat|convergence\s+diagnos|ess\b|effective\s+sample',
+        "**Convergence Diagnostics**\n\n"
+        "- **R-hat**: Potential scale reduction factor across chains. < 1.05 = converged. > 1.1 = not converged.\n"
+        "- **ESS**: Effective Sample Size — number of independent samples from the chain. "
+        "Higher = better mixing. ESS/total_steps > 0.1 is generally acceptable."
+    ),
+    (
+        r'\baggregat\b',
+        "**Aggregation Propensity**\n\n"
+        "Estimated from hydrophobic stretch analysis (I/L/F/V/W/M runs):\n"
+        "- Stretch ≥ 4 residues → aggregation warning\n"
+        "- Mitigation: insert D/E/K residues to break patches\n"
+        "- High aggregation → reduces manufacturability and raises off-target risk\n"
+        "Use 'low aggregation' constraint to increase the aggregation penalty in the oracle."
+    ),
+    (
+        r'\bimmunogen\b|\bmhc\b|immune\s+response',
+        "**Immunogenicity Score**\n\n"
+        "Estimated from MHC anchor motif frequency. High score → immune rejection risk:\n"
+        "- Basic (K/R) and aromatic (F/Y/W) residues at anchor positions increase score\n"
+        "- Score 0 = no predicted MHC anchors; > 0.5 = moderate immune risk\n"
+        "Use 'low immunogenicity' constraint to apply a charge penalty during design."
+    ),
+    (
+        r'\bserum\s+half.life\b|half.life\b|\bt1/2\b|pharmacokinetic',
+        "**Serum Half-Life**\n\n"
+        "Estimated in minutes from sequence length and composition. Rough guide:\n"
+        "- Short peptides (< 10 AA): 10–30 min\n"
+        "- Miniproteins (30–100 AA): 30–120 min\n"
+        "- Nanobodies (110–130 AA): 60–240 min\n"
+        "Actual half-life depends on clearance, PEGylation, formulation, etc."
+    ),
+    (
+        r'what\s+(can|does|is)\s+(you|proteus)|how\s+to\s+use',
+        "**What Proteus Can Do**\n\n"
+        "Given patient clinical info, Proteus:\n"
+        "1. Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n"
+        "2. Runs 3 rounds of MCMC design (400–800 steps/chain, 3–5 parallel chains)\n"
+        "3. Scores each candidate on 8+ biophysical objectives\n"
+        "4. Returns the best sequence with full mutation rationale\n\n"
+        "To request a design run, say something like:\n"
+        "- 'Design a peptide for this target'\n"
+        "- 'Optimize for high solubility, no cysteines'\n"
+        "- 'Run with a 20 amino acid thermostable candidate'"
+    ),
+]
+
+_CONVERSATIONAL_FALLBACK = (
+    "I specialize in protein design and biophysics. I can answer questions about:\n"
+    "- ΔG binding, Kd, MCMC, pLDDT, stability, solubility\n"
+    "- Selectivity, immunogenicity, aggregation, serum half-life\n"
+    "- The Triple-Gate physics model and lab viability score\n"
+    "- How Proteus works\n\n"
+    "To run a new design cycle, type a message like 'design a peptide' or 'optimize for high solubility'."
+)
+
+
+def _is_design_request(message: str) -> bool:
+    """True if the message clearly requests a new MCMC design run."""
+    text = message.lower()
+    return any(re.search(p, text) for p in _DESIGN_TRIGGERS)
+
+
+def _is_question(message: str) -> bool:
+    """True if the message looks like a knowledge/conversational question."""
+    text = message.strip().lower()
+    if '?' in text:
+        return True
+    starters = ('what', 'how', 'why', 'when', 'where', 'who', 'explain',
+                 'describe', 'tell me', 'can you', 'could you', 'does', 'do you')
+    return any(text.startswith(s) for s in starters)
+
+
+def _answer_question(message: str) -> Optional[str]:
+    """Return a direct answer if the question matches a known topic, else None."""
+    text = message.lower()
+    for pattern, answer in _QA_PAIRS:
+        if re.search(pattern, text):
+            return answer
+    return None
+
+
 def _detect_impossible(message: str) -> Optional[str]:
     """
     Detect physically impossible or contradictory design requests.
@@ -719,6 +908,14 @@ class ProteinDesignAgent:
 
     def run(self, patient: PatientInfo, message: str) -> AgentRunResponse:
         messages: List[AgentMessage] = [AgentMessage(role="user", content=message)]
+
+        # --- Q&A short-circuit: answer questions without running MCMC ---
+        if _is_question(message) and not _is_design_request(message):
+            answer = _answer_question(message)
+            if answer is None:
+                answer = _CONVERSATIONAL_FALLBACK
+            messages.append(AgentMessage(role="agent", content=answer))
+            return AgentRunResponse(reply=answer, messages=messages)
 
         # --- Constraint parsing ---
         all_notes = (patient.notes or "") + " " + (patient.tumor_markers or "")
