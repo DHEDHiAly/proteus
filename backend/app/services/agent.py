@@ -3,6 +3,7 @@ import re
 import uuid
 import time
 import numpy as np
+import httpx
 from typing import List, Optional, Tuple, Dict
 from datetime import datetime
 
@@ -471,7 +472,7 @@ _QA_PAIRS = [
         "Proteus estimates Kd via ΔG = RT·ln(Kd) from the multi-objective energy oracle."
     ),
     (
-        r'\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+proteus\s+work',
+        r'\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+(proteus|mcmc)\s+work',
         "**How Proteus MCMC Works**\n\n"
         "Proteus runs Metropolis-Hastings MCMC across parallel temperature chains:\n"
         "- Multiple chains run simultaneously at temperatures 0.5 → 10\n"
@@ -622,6 +623,47 @@ def _answer_question(message: str) -> Optional[str]:
     for pattern, answer in _QA_PAIRS:
         if re.search(pattern, text):
             return answer
+    return None
+
+
+_OLLAMA_URL = "http://localhost:11434/api/chat"
+_OLLAMA_MODEL = "llama3.2"
+_OLLAMA_SYSTEM = (
+    "You are Proteus, an AI protein therapeutic design assistant. "
+    "You help researchers understand designed protein and peptide therapeutics. "
+    "Be concise, factual, and scientific. Answer questions about designed sequences, "
+    "mechanisms of action, protein biology, and oncology targets. "
+    "If asked to design or generate a new protein, tell the user to say "
+    "'design a peptide' or 'optimize' to start a new design run — do not generate sequences yourself."
+)
+
+
+def _call_ollama(
+    user_message: str,
+    context: Optional[str] = None,
+    model: str = _OLLAMA_MODEL,
+) -> Optional[str]:
+    """Call local Ollama and return the assistant reply, or None if unavailable."""
+    system = _OLLAMA_SYSTEM
+    if context:
+        system += f"\n\nContext about the current design session:\n{context}"
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            res = client.post(
+                _OLLAMA_URL,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "stream": False,
+                },
+            )
+            if res.status_code == 200:
+                return res.json()["message"]["content"].strip()
+    except Exception:
+        pass
     return None
 
 
@@ -917,6 +959,23 @@ class ProteinDesignAgent:
         if answer is not None:
             messages.append(AgentMessage(role="agent", content=answer))
             return AgentRunResponse(reply=answer, messages=messages)
+
+        # --- Ollama conversational fallback for non-design questions ---
+        # If the message looks like a question (not a design command), try Ollama.
+        # If Ollama is unavailable, fall through to the MCMC pipeline anyway
+        # (the agent will at least produce a design result).
+        if _is_question(message):
+            context_parts = [f"Target: {patient.cancer_type}"]
+            if patient.tumor_markers:
+                context_parts.append(f"Markers: {patient.tumor_markers}")
+            if patient.cancer_stage:
+                context_parts.append(f"Stage: {patient.cancer_stage}")
+            if patient.previous_treatments:
+                context_parts.append(f"Prior treatments: {patient.previous_treatments}")
+            ollama_reply = _call_ollama(message, context="\n".join(context_parts))
+            if ollama_reply:
+                messages.append(AgentMessage(role="agent", content=ollama_reply))
+                return AgentRunResponse(reply=ollama_reply, messages=messages)
 
         # --- Constraint parsing ---
         all_notes = (patient.notes or "") + " " + (patient.tumor_markers or "")

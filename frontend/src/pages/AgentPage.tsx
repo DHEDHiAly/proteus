@@ -24,7 +24,7 @@ const QA_PAIRS: [RegExp, string][] = [
     "**ΔG Binding** — Gibbs free energy of binding (kcal/mol). More negative = stronger:\n- < −9: strong  ·  −7 to −9: good  ·  −6 to −7: promising  ·  > −6: weak\nCalculated as ΔG = RT·ln(Kd) at body temperature (310 K)."],
   [/\bkd\b|dissociation\s+constant|binding\s+affinity/i,
     "**Kd (Dissociation Constant)** — lower = tighter binding:\n- < 1 nM: ultra-high  ·  1–10 nM: drug-like  ·  10–100 nM: high  ·  > 1 μM: weak\nProteus estimates Kd from ΔG = RT·ln(Kd) via the multi-objective energy oracle."],
-  [/\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+.{0,20}work/i,
+  [/\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+(proteus|mcmc)\s+work/i,
     "**How Proteus works**\nMetropolis-Hastings MCMC across parallel temperature chains (0.5 → 10):\n1. Proposes residue mutations at each step\n2. Accepts improvements greedily; accepts bad moves probabilistically at high temperature\n3. Runs 3 rounds; returns the best candidate across all chains\nR-hat < 1.05 = converged. ESS measures chain mixing quality."],
   [/\bplddt\b|structural\s+confidence/i,
     "**pLDDT** — structural confidence proxy (0–100):\n- > 90: ordered  ·  70–90: confident  ·  50–70: partly disordered  ·  < 50: likely disordered"],
