@@ -30,7 +30,7 @@ export default function IterationTable({ rounds, onSelect }: Props) {
             >
               <td className="py-2 pr-3 flex items-center space-x-1">
                 <span>{r.round}</span>
-                {r.is_best && <span className="text-[10px]">⭐</span>}
+                {r.is_best && <span className="text-[10px]">*</span>}
               </td>
               <td className="py-2 pr-3 font-mono text-[11px] truncate max-w-[140px]">{r.sequence}</td>
               <td className="py-2 pr-3 text-right">{(r.binding_score * 100).toFixed(0)}%</td>

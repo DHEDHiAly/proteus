@@ -195,7 +195,7 @@ export default function BenchmarkGraphs() {
                 <td className="py-2 pr-3 font-medium text-white">Proteus</td>
                 <td className="py-2 pr-3 text-right text-green-400 font-bold">{p.binding_nM}</td>
                 <td className="py-2 pr-3 text-right text-gray-400">{p.time_s}s</td>
-                <td className="py-2 text-right text-green-400">{beatSota ? '⭐ Best' : 'Competitive'}</td>
+                <td className="py-2 text-right text-green-400">{beatSota ? '* Best' : 'Competitive'}</td>
               </tr>
               <tr className="border-b border-[#1a1a1a]">
                 <td className="py-2 pr-3 text-gray-400">AlphaFold</td>

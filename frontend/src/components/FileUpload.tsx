@@ -81,7 +81,7 @@ export default function FileUpload({ onPDBUpload, onSequenceInput }: FileUploadP
             className="hidden"
           />
           <button onClick={() => fileRef.current?.click()} className="btn-secondary text-[10px] w-full">
-            {fileName ? `📎 ${fileName}` : 'Upload PDB File'}
+            {fileName ? `Upload  ${fileName}` : 'Upload PDB File'}
           </button>
         </div>
       ) : (
