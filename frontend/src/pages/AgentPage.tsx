@@ -13,19 +13,10 @@ import OptimizationTrace from '../components/OptimizationTrace';
 import { savedDesignsService } from '../services/savedDesigns';
 import type { SavedDesign } from '../services/savedDesigns';
 
-// ── Frontend Q&A routing (mirrors backend _DESIGN_TRIGGERS / _QA_PAIRS) ───────
-// Only messages that match one of these patterns are sent to the MCMC backend.
-// Everything else is answered locally — this works regardless of server state.
-const DESIGN_TRIGGERS = [
-  /\bdesign\b/i, /\boptimize\b/i, /\bgenerate\b/i, /\bcreate\b/i,
-  /\brun\s+(mcmc|again|another|more|a\s+new)\b/i,
-  /\bmake\s+.{0,20}(protein|peptide|sequence|candidate)\b/i,
-  /\bfind\s+.{0,20}(binder|sequence|candidate)\b/i,
-  /\btry\s+(again|another|with|a\s+different)\b/i,
-  /\bstart\s+(over|again|a\s+new)\b/i,
-  /\bnew\s+(candidate|sequence)\b/i,
-];
-
+// ── Frontend Q&A routing ──────────────────────────────────────────────────────
+// Only messages that clearly match a known biophysics topic are answered locally.
+// Everything else — design requests, synonyms, typos, ambiguous phrasing — is
+// sent to the API so the real agent handles it.
 const QA_PAIRS: [RegExp, string][] = [
   [/what\s+(can|does|is|do)\s+(you|it|this|proteus)\b|what\s+do\s+you\s+do|how\s+to\s+use|tell\s+me\s+about\s+(yourself|proteus|this)/i,
     "**What Proteus Does**\n\nGiven patient clinical information, Proteus:\n- Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n- Runs 3 rounds of MCMC design across parallel temperature chains\n- Scores each candidate on 8+ biophysical objectives (ΔG, Kd, stability, solubility, selectivity, immunogenicity, aggregation, half-life)\n- Returns the best sequence with full mutation rationale and Triple-Gate physics checks\n\nTo start a design run, say something like 'design a peptide' or 'optimize for high solubility'."],
@@ -57,22 +48,13 @@ const QA_PAIRS: [RegExp, string][] = [
     "**Serum half-life** — estimated from sequence length and composition:\n- Peptides < 10 AA: 10–30 min  ·  Miniproteins: 30–120 min  ·  Nanobodies: 60–240 min"],
 ];
 
-const QA_FALLBACK =
-  "I specialize in protein design. I can answer questions about:\n" +
-  "- ΔG binding, Kd, MCMC, pLDDT, stability, solubility\n" +
-  "- Selectivity, immunogenicity, aggregation, serum half-life\n" +
-  "- Triple-Gate physics model, lab viability score\n\n" +
-  "To run a new design, say something like 'design a peptide' or 'optimize for high solubility'.";
-
-function isDesignRequest(msg: string): boolean {
-  return DESIGN_TRIGGERS.some((p) => p.test(msg));
-}
-
-function getLocalAnswer(msg: string): string {
+// Returns a local answer if the message clearly asks about a known biophysics topic;
+// returns null for everything else so it goes to the API.
+function getQAAnswer(msg: string): string | null {
   for (const [pattern, answer] of QA_PAIRS) {
     if (pattern.test(msg)) return answer;
   }
-  return QA_FALLBACK;
+  return null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -510,9 +492,11 @@ export default function AgentPage() {
     const userMessage = input;
     setInput('');
 
-    // Q&A short-circuit — answer locally without any API call
-    if (!isDesignRequest(userMessage)) {
-      setMessages((prev) => [...prev, { role: 'agent', content: getLocalAnswer(userMessage) }]);
+    // If the message clearly matches a known biophysics Q&A topic, answer locally.
+    // Everything else — design requests, synonyms, typos, ambiguous phrasing — goes to the API.
+    const localAnswer = getQAAnswer(userMessage);
+    if (localAnswer !== null) {
+      setMessages((prev) => [...prev, { role: 'agent', content: localAnswer }]);
       return;
     }
 

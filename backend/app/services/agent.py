@@ -909,15 +909,12 @@ class ProteinDesignAgent:
     def run(self, patient: PatientInfo, message: str) -> AgentRunResponse:
         messages: List[AgentMessage] = [AgentMessage(role="user", content=message)]
 
-        # --- Conversational short-circuit: only run MCMC for explicit design requests ---
-        # If the message does NOT match a design-trigger keyword, return a Q&A or
-        # fallback answer immediately without touching the MCMC pipeline.  This
-        # prevents the agent from producing a design response to questions, greetings,
-        # acknowledgements, or any other non-design message.
-        if not _is_design_request(message):
-            answer = _answer_question(message)
-            if answer is None:
-                answer = _CONVERSATIONAL_FALLBACK
+        # --- Conversational short-circuit: only intercept clear biophysics Q&A ---
+        # If the message matches a known Q&A topic, answer locally without MCMC.
+        # Everything else — design requests, synonyms, typos, ambiguous phrasing —
+        # falls through to the full design pipeline.
+        answer = _answer_question(message)
+        if answer is not None:
             messages.append(AgentMessage(role="agent", content=answer))
             return AgentRunResponse(reply=answer, messages=messages)
 
