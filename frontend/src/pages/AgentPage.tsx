@@ -27,6 +27,8 @@ const DESIGN_TRIGGERS = [
 ];
 
 const QA_PAIRS: [RegExp, string][] = [
+  [/what\s+(can|does|is|do)\s+(you|it|this|proteus)\b|what\s+do\s+you\s+do|how\s+to\s+use|tell\s+me\s+about\s+(yourself|proteus|this)/i,
+    "**What Proteus Does**\n\nGiven patient clinical information, Proteus:\n- Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n- Runs 3 rounds of MCMC design across parallel temperature chains\n- Scores each candidate on 8+ biophysical objectives (ΔG, Kd, stability, solubility, selectivity, immunogenicity, aggregation, half-life)\n- Returns the best sequence with full mutation rationale and Triple-Gate physics checks\n\nTo start a design run, say something like 'design a peptide' or 'optimize for high solubility'."],
   [/delta\s*g|binding\s+free\s+energ|\bdg\b.*binding/i,
     "**ΔG Binding** — Gibbs free energy of binding (kcal/mol). More negative = stronger:\n- < −9: strong  ·  −7 to −9: good  ·  −6 to −7: promising  ·  > −6: weak\nCalculated as ΔG = RT·ln(Kd) at body temperature (310 K)."],
   [/\bkd\b|dissociation\s+constant|binding\s+affinity/i,

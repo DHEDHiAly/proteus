@@ -576,7 +576,7 @@ _QA_PAIRS = [
         "Actual half-life depends on clearance, PEGylation, formulation, etc."
     ),
     (
-        r'what\s+(can|does|is)\s+(you|proteus)|how\s+to\s+use',
+        r'what\s+(can|does|is|do)\s+(you|it|this|proteus)\b|what\s+do\s+you\s+do|how\s+to\s+use|tell\s+me\s+about\s+(yourself|proteus|this)',
         "**What Proteus Can Do**\n\n"
         "Given patient clinical info, Proteus:\n"
         "1. Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n"
