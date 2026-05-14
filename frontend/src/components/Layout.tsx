@@ -24,7 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/agent" className="flex items-center space-x-2 group">
                 <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 group-hover:opacity-80 transition-opacity">
                   <defs><linearGradient id="nl" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="#fff"/><stop offset="50%" stop-color="#666"/><stop offset="100%" stop-color="#fff"/>
+                    <stop offset="0%" stopColor="#fff"/><stop offset="50%" stopColor="#666"/><stop offset="100%" stopColor="#fff"/>
                   </linearGradient></defs>
                   <g stroke="url(#nl)" strokeWidth="2.5" strokeLinecap="round" fill="none">
                     <path d="M30 15 Q50 25 70 15 Q50 5 30 15" opacity=".9"/>

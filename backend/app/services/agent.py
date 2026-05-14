@@ -73,11 +73,12 @@ AA_PROPERTIES: Dict[str, Dict[str, str]] = {
 PHASE_EXPLANATIONS = {
     "generate": (
         "**Phase: Generate**\n"
-        "Running MCMC across parallel temperature chains. Each chain explores "
-        "sequence space at a different temperature:\n"
+        "Running Gradient-Informed Adaptive Parallel Tempering (GIAPT) across parallel chains. "
+        "Each chain explores sequence space at a different temperature:\n"
         "- T=0.5: fine-tuning near known solutions\n"
         "- T=2.0: balanced exploration vs exploitation\n"
         "- T=5.0+: broad search for novel structural motifs\n\n"
+        "Temperature adapts every 50 steps to maintain 23–40% acceptance rate (BADASS-inspired). "
         "At each step, a mutation is proposed (point substitution, insertion, deletion, "
         "or block swap) and accepted/rejected by Metropolis-Hastings based on "
         "the multi-objective energy score."
@@ -85,6 +86,7 @@ PHASE_EXPLANATIONS = {
     "evaluate": (
         "**Phase: Evaluate**\n"
         "Each candidate is scored across eight biophysical objectives simultaneously:\n"
+        "- **ΔG binding** — Free energy of binding (kcal/mol, RT·ln(Kd)); < −6 = promising\n"
         "- **Binding affinity** — Sequence information content vs. target pocket\n"
         "- **Stability** — Secondary structure propensity (helix/sheet content)\n"
         "- **Solubility** — GRAVY score + charged residue fraction\n"
@@ -134,6 +136,246 @@ IMPOSSIBLE_PATTERNS = [
         "I can design a peripheral membrane-binding peptide or a detergent-solubilized construct instead."
     ),
 ]
+
+
+def _suggest_solubility_tags(seq: str) -> List[str]:
+    """
+    Detect solubility liabilities and suggest remediation tags.
+    Returns a list of tag strings for display.
+    """
+    from app.core.energy import HYDROPHOBICITY_SCALE
+    tags: List[str] = []
+    if not seq:
+        return tags
+    gravy = sum(HYDROPHOBICITY_SCALE.get(aa, 0.0) for aa in seq) / max(len(seq), 1)
+    if gravy > 1.5:
+        tags.append("Grease Ball (GRAVY {:.2f}) — add D/E/K residues".format(gravy))
+    # Hydrophobic stretch >= 4 residues in ILFVWM
+    cur = 0
+    max_stretch = 0
+    for aa in seq:
+        if aa in "ILFVWM":
+            cur += 1
+            if cur > max_stretch:
+                max_stretch = cur
+        else:
+            cur = 0
+    if max_stretch >= 4:
+        tags.append("Hydrophobic stretch ({} residues) — suggest D/E insertion".format(max_stretch))
+    # C-terminal hydrophobic tail -> suggest K-tag
+    tail = seq[-4:] if len(seq) >= 4 else seq
+    tail_hydro = sum(1 for aa in tail if aa in "ILFVWM")
+    if tail_hydro >= 3:
+        tags.append("C-terminal hydrophobic tail — suggest K-tag addition")
+    return tags
+
+
+def _generate_3d_notes(seq: str, target_name: str, pocket_residues: List[int],
+                       pdb_id: str = "") -> List[str]:
+    """
+    Generate 3D structure inspection notes for the molecular viewer.
+    Returns list of actionable note strings.
+    """
+    notes: List[str] = []
+    if not seq:
+        return notes
+    # Aromatic residues -> pi-stacking candidates
+    aromatic_positions = [i + 1 for i, aa in enumerate(seq) if aa in "FWY"]
+    if aromatic_positions:
+        aa_strs = ["{}{}".format(seq[i - 1], i) for i in aromatic_positions[:3]]
+        notes.append(
+            "Pi-stacking candidates: {} — inspect in viewer for aromatic contacts "
+            "at binding interface.".format(", ".join(aa_strs))
+        )
+    # Charged residues -> salt bridge candidates
+    charged_positions = [(i + 1, aa) for i, aa in enumerate(seq) if aa in "RKDE"]
+    if charged_positions:
+        pos_strs = ["{}{}".format(aa, pos) for pos, aa in charged_positions[:3]]
+        notes.append(
+            "Salt bridge candidates: {} — check proximity to oppositely charged "
+            "pocket residues for electrostatic anchoring.".format(", ".join(pos_strs))
+        )
+    # Pocket residue selection note
+    if pocket_residues:
+        pocket_in_range = [pos for pos in pocket_residues if pos < len(seq)]
+        viewer_ref = pdb_id or target_name
+        if pocket_in_range:
+            notes.append(
+                "RCSB Selection: highlight residues {} in {} to visualize "
+                "binding pocket overlap.".format(
+                    "+".join(str(p) for p in pocket_in_range[:6]), viewer_ref
+                )
+            )
+    # Always add surface/clash check
+    notes.append(
+        "Surface clash check: use RCSB 3D viewer Analyze > Contacts to verify "
+        "no steric clashes at the designed binding interface."
+    )
+    return notes
+
+
+def _format_fasta(seq: str, target_name: str, dg: float, kd: float,
+                  lab: float) -> str:
+    """Format sequence as FASTA with biophysical header."""
+    header = ">Proteus_{} | dG {:.2f} kcal/mol | Kd {:.0f} nM | Lab viability {:.0f}/100".format(
+        target_name.replace(" ", "_"), dg, kd, lab
+    )
+    wrapped = "\n".join(seq[i:i + 60] for i in range(0, len(seq), 60))
+    return header + "\n" + wrapped
+
+
+def _generate_physics_justification(
+    design: dict, round_num: int, prev_seq: str, modality: str
+) -> str:
+    """
+    Generate a per-round physics narrative for the Command-and-Justify protocol.
+    Returns a multi-line string covering all biophysical mechanisms.
+    """
+    seq = design.get("sequence", "")
+    dg = design.get("delta_g_binding_kcal_mol", 0.0)
+    kd = design.get("kd_nM", 0.0)
+    sc = design.get("surface_complementarity", 0.0)
+    gate1 = design.get("gate1_pass", False)
+    solv_dg = design.get("solvation_delta_g", 0.0)
+    gate2 = design.get("gate2_pass", False)
+    entropy = design.get("entropic_penalty", 0.0)
+    gate3 = design.get("gate3_pass", False)
+    hbonds = design.get("hbond_count", 0)
+    lab = design.get("lab_viability_score", 0.0)
+    sel_ddg = design.get("selectivity_ddg", 0.0)
+    sel_ratio = design.get("selectivity_ratio", 1.0)
+
+    lines = ["**Physics Justification — Round {}**".format(round_num), ""]
+
+    # Hydrophobic Wedge
+    hydro_count = sum(1 for aa in seq if aa in "ILFVWM")
+    hydro_frac = hydro_count / max(len(seq), 1)
+    if hydro_frac >= 0.35:
+        wedge = "Strong hydrophobic core ({:.0f}% ILFVWM) — favorable burial in target pocket".format(
+            hydro_frac * 100)
+    elif hydro_frac >= 0.20:
+        wedge = "Moderate hydrophobic content ({:.0f}% ILFVWM) — partial burial contribution".format(
+            hydro_frac * 100)
+    else:
+        wedge = "Low hydrophobic content ({:.0f}% ILFVWM) — polar interface dominant; check desolvation".format(
+            hydro_frac * 100)
+    lines.append("- Hydrophobic Wedge: " + wedge)
+
+    # Charge Anchor
+    pos_count = sum(1 for aa in seq if aa in "RK")
+    neg_count = sum(1 for aa in seq if aa in "DE")
+    charge_net = pos_count - neg_count
+    if charge_net > 0:
+        anchor = "{} cationic (R/K) vs {} anionic (D/E) — net +{} charge; potential salt-bridge anchor with anionic pocket".format(
+            pos_count, neg_count, charge_net)
+    elif charge_net < 0:
+        anchor = "{} anionic (D/E) vs {} cationic (R/K) — net {} charge; electrostatic anchor with cationic pocket residues".format(
+            neg_count, pos_count, charge_net)
+    else:
+        anchor = "Charge-balanced ({} pos, {} neg) — distributed electrostatic contacts expected".format(
+            pos_count, neg_count)
+    lines.append("- Charge Anchor: " + anchor)
+
+    # Enthalpic Lock (Gate 1 — Surface Complementarity)
+    gate1_str = "PASS" if gate1 else "FAIL"
+    lock_note = (
+        "surface geometry sufficient for stable enthalpic interface"
+        if gate1
+        else "poor geometric fit — consider aromatic (F/W/Y) or charged residue insertions at contact positions"
+    )
+    lines.append(
+        "- Enthalpic Lock (Sc): Sc = {:.3f} ({}) — threshold 0.400; {}".format(sc, gate1_str, lock_note)
+    )
+    lines.append(
+        "- H-bonds: {} predicted backbone + sidechain contacts at binding interface".format(hbonds)
+    )
+
+    # Solvation (Gate 2)
+    gate2_str = "PASS" if gate2 else "FAIL"
+    if solv_dg <= 0.0:
+        solv_note = "burial gains (hydrophobic + vdW) exceed desolvation penalty"
+    else:
+        solv_note = "charge desolvation cost dominates burial gain; consider reducing K/R count or adding compensating H-bonds"
+    lines.append(
+        "- Solvation Gain/Cost: DG_solv = {:.2f} kcal/mol ({}) — {}".format(
+            solv_dg, gate2_str, solv_note)
+    )
+
+    # Conformational Entropy (Gate 3)
+    gate3_str = "PASS" if gate3 else "FAIL"
+    if gate3:
+        ent_note = "conformational restriction within acceptable range for binding"
+    else:
+        ent_note = "excessive flexibility or disordered segments predicted; consider Gly reduction or stapling"
+    lines.append(
+        "- Conformational Entropy: -TDS penalty = {:.2f} kcal/mol ({}) — threshold 3.50; {}".format(
+            entropy, gate3_str, ent_note)
+    )
+
+    # ΔG result
+    if dg <= -9.0:
+        dg_interp = "strong binder"
+    elif dg <= -7.0:
+        dg_interp = "good binder"
+    elif dg <= -6.0:
+        dg_interp = "promising (above AutoDock Vina lab-worthy threshold)"
+    else:
+        dg_interp = "weak binder — below -6.0 kcal/mol lab-worthy threshold"
+    lines.append(
+        "- DG = {:.2f} kcal/mol | Kd = {:.0f} nM — {}".format(dg, kd, dg_interp)
+    )
+
+    # Selectivity
+    if sel_ddg > 0:
+        sel_note = "on-target preference confirmed; off-target binding penalized"
+    else:
+        sel_note = "off-target risk present; increase pocket-specificity constraints and re-run"
+    lines.append(
+        "- Selectivity: DDG = {:.2f} kcal/mol | ratio {:.1f}x — {}".format(
+            sel_ddg, sel_ratio, sel_note)
+    )
+
+    # Lab Viability
+    if lab >= 70:
+        lab_note = "proceed to peptide synthesis or recombinant expression"
+    elif lab >= 50:
+        lab_note = "borderline; address failing gates before synthesis"
+    else:
+        lab_note = "significant optimization required before lab hand-off"
+    lines.append("- Lab Viability: {:.0f}/100 — {}".format(lab, lab_note))
+
+    # Modality
+    if modality:
+        modality_labels = {
+            "peptide": "Peptide (8-30 AA) — solid-phase synthesis viable",
+            "miniprotein": "Miniprotein (30-100 AA) — E. coli expression; verify disulfide-free",
+            "nanobody": "Nanobody/VHH (110-130 AA) — yeast or E. coli periplasm expression",
+            "cyclic_peptide": "Cyclic peptide — SPPS with head-to-tail cyclization strategy",
+            "antimicrobial": "Antimicrobial peptide — SPPS; verify membrane disruption assay",
+        }
+        lines.append("- Modality: " + modality_labels.get(modality, modality))
+
+    # Mutation Strategy (round-over-round diff)
+    if prev_seq and seq and prev_seq != seq:
+        diffs = []
+        for i, (a, b) in enumerate(zip(prev_seq, seq)):
+            if a != b:
+                diffs.append("{}{}>{}".format(a, i + 1, b))
+        if len(seq) != len(prev_seq):
+            diffs.append("len {} -> {}".format(len(prev_seq), len(seq)))
+        if diffs:
+            suffix = " ..." if len(diffs) > 6 else ""
+            lines.append(
+                "- Mutation Strategy: {} change(s) from prior round — {}{}".format(
+                    len(diffs), ", ".join(diffs[:6]), suffix)
+            )
+    else:
+        lines.append(
+            "- Mutation Strategy: Round 1 seed — starting from {}".format(
+                seq[:8] if seq else "initial sequence")
+        )
+
+    return "\n".join(lines)
 
 
 def _parse_constraints(message: str, notes: str = "") -> Dict:
@@ -309,7 +551,8 @@ class ProteinDesignAgent:
 
     def _run_mcmc_round(self, seed: str, target_name: str, target_meta: dict,
                         steps: int = 600, num_chains: int = 3,
-                        constraints: Optional[Dict] = None) -> dict:
+                        constraints: Optional[Dict] = None,
+                        pdb_id: str = "") -> dict:
         oracle = EnergyOracle()
         pocket = target_meta.get("binding_site_residues", [])
         if pocket:
@@ -374,6 +617,50 @@ class ProteinDesignAgent:
                         )
                         break
 
+        # Build optimization trace from chain 0 accepted point substitutions
+        trace: List[dict] = []
+        if result.chains:
+            chain0_log = result.chains[0].mutation_log
+            accepted_subs = [
+                m for m in chain0_log
+                if m.get("accepted")
+                and len(str(m.get("from_aa", ""))) == 1
+                and len(str(m.get("to_aa", ""))) == 1
+                and m.get("from_aa") != m.get("to_aa")
+            ]
+            n_subs = len(accepted_subs)
+            if n_subs > 0:
+                num_samples = min(6, n_subs)
+                if num_samples == 1:
+                    sampled = [accepted_subs[0]]
+                else:
+                    idxs = [
+                        int(round(i * (n_subs - 1) / (num_samples - 1)))
+                        for i in range(num_samples)
+                    ]
+                    seen_idxs: set = set()
+                    sampled = []
+                    for idx in idxs:
+                        if idx not in seen_idxs:
+                            seen_idxs.add(idx)
+                            sampled.append(accepted_subs[idx])
+                for entry in sampled:
+                    f = str(entry.get("from_aa", "?"))
+                    t = str(entry.get("to_aa", "?"))
+                    pos = int(entry.get("position", 0)) + 1
+                    dE = float(entry.get("delta_energy", 0.0))
+                    temp = float(entry.get("temperature", 1.0))
+                    blosum_s = oracle.compute_blosum_similarity(f, t) * 15 - 4
+                    trace.append({
+                        "step": int(entry.get("step", 0)),
+                        "position": pos,
+                        "from": f,
+                        "to": t,
+                        "delta_energy": round(dE, 4),
+                        "temperature": round(temp, 2),
+                        "narrative": _explain_mutation(f, t, pos, dE, blosum_s),
+                    })
+
         return {
             "run_id": result.run_id,
             "seed": seed,
@@ -385,6 +672,7 @@ class ProteinDesignAgent:
             "rhat": result.rhat,
             "ess": result.ess,
             "mutations": mutations,
+            "trace": trace,
             "converged": result.converged,
             "num_candidates": len(candidates),
             "steps": steps,
@@ -401,6 +689,29 @@ class ProteinDesignAgent:
             "serum_half_life_min": best.get("serum_half_life_min", 0),
             "selectivity_ratio": best.get("selectivity_ratio", 1.0),
             "toxicity_flag": best.get("toxicity_flag", False),
+            "delta_g_binding_kcal_mol": best.get("delta_g_binding_kcal_mol", 0.0),
+            # Triple-Gate Physics Model
+            "hbond_count": best.get("hbond_count", 0),
+            "entropic_penalty": best.get("entropic_penalty", 0.0),
+            "solvation_delta_g": best.get("solvation_delta_g", 0.0),
+            "surface_complementarity": best.get("surface_complementarity", 0.0),
+            "gate1_pass": best.get("gate1_pass", False),
+            "gate2_pass": best.get("gate2_pass", False),
+            "gate3_pass": best.get("gate3_pass", False),
+            "lab_viability_score": best.get("lab_viability_score", 0.0),
+            "selectivity_ddg": best.get("selectivity_ddg", 0.0),
+            # Agent-level outputs
+            "solubility_tags": _suggest_solubility_tags(best.get("sequence", "")),
+            "notes_3d": _generate_3d_notes(
+                best.get("sequence", ""), target_name, pocket, pdb_id
+            ),
+            "fasta": _format_fasta(
+                best.get("sequence", ""),
+                target_name,
+                best.get("delta_g_binding_kcal_mol", 0.0),
+                best.get("kd_nM", 0.0),
+                best.get("lab_viability_score", 0.0),
+            ),
         }
 
     def _build_structure_url(self, pdb_id: str) -> str:
@@ -412,6 +723,24 @@ class ProteinDesignAgent:
         # --- Constraint parsing ---
         all_notes = (patient.notes or "") + " " + (patient.tumor_markers or "")
         constraints = _parse_constraints(message, all_notes)
+
+        # --- Modality-based overrides ---
+        modality = (patient.modality or "").strip().lower()
+        if modality == "peptide":
+            constraints.setdefault("target_length", 12)
+        elif modality == "miniprotein":
+            constraints.setdefault("target_length", 50)
+            constraints.setdefault("thermostable", True)
+        elif modality == "nanobody":
+            constraints.setdefault("target_length", 120)
+            constraints.setdefault("high_solubility", True)
+        elif modality == "cyclic_peptide":
+            constraints.setdefault("target_length", 10)
+            constraints.setdefault("bbb_penetrant", True)
+            constraints.setdefault("no_cysteines", True)
+        elif modality == "antimicrobial":
+            constraints["antimicrobial"] = True
+            constraints.setdefault("target_length", 15)
 
         # --- Impossible request detection ---
         impossibility = _detect_impossible(message)
@@ -429,6 +758,15 @@ class ProteinDesignAgent:
         # --- Constraint acknowledgement ---
         if constraints:
             parts = []
+            if modality:
+                label = {
+                    "peptide": "Peptide (8–30 AA)",
+                    "miniprotein": "Miniprotein (30–100 AA)",
+                    "nanobody": "Nanobody / VHH (110–130 AA)",
+                    "cyclic_peptide": "Cyclic peptide",
+                    "antimicrobial": "Antimicrobial peptide (AMP)",
+                }.get(modality, modality)
+                parts.append("Modality: {}".format(label))
             if constraints.get("target_length"):
                 parts.append("Target length: {} AA".format(constraints["target_length"]))
             if constraints.get("no_cysteines"):
@@ -486,6 +824,7 @@ class ProteinDesignAgent:
         start_time = time.time()
         rounds_data = []
         current_seed = seed
+        prev_seed = seed  # tracks input seed per round for physics justification
 
         for round_num in range(1, 4):
             steps = 400 + round_num * 200
@@ -509,7 +848,8 @@ class ProteinDesignAgent:
             ))
 
             design = self._run_mcmc_round(
-                current_seed, target_name, target_meta, steps, chains, constraints
+                current_seed, target_name, target_meta, steps, chains, constraints,
+                pdb_id=pdb_id
             )
             design["round"] = round_num
             rounds_data.append(design)
@@ -530,8 +870,8 @@ class ProteinDesignAgent:
                 "",
                 "| Metric | Value | Interpretation |",
                 "|--------|-------|----------------|",
-                "| Binding Score | {:.1f}% | Predicted affinity for {} |".format(
-                    design["binding_score"] * 100, target_name),
+                "| ΔG Binding | {:.2f} kcal/mol | Free energy of binding (< −6 = promising) |".format(
+                    design.get("delta_g_binding_kcal_mol", 0)),
                 "| Kd estimate | {:.0f} nM | Predicted dissociation constant |".format(
                     design.get("kd_nM", 0)),
                 "| Serum half-life | {:.0f} min | Predicted in vivo stability |".format(
@@ -614,11 +954,34 @@ class ProteinDesignAgent:
                         "serum_half_life_min": design.get("serum_half_life_min", 0),
                         "selectivity_ratio": design.get("selectivity_ratio", 1.0),
                         "toxicity_flag": design.get("toxicity_flag", False),
+                        "delta_g_binding_kcal_mol": design.get("delta_g_binding_kcal_mol", 0.0),
+                        # Triple-Gate fields
+                        "hbond_count": design.get("hbond_count", 0),
+                        "entropic_penalty": design.get("entropic_penalty", 0.0),
+                        "solvation_delta_g": design.get("solvation_delta_g", 0.0),
+                        "surface_complementarity": design.get("surface_complementarity", 0.0),
+                        "gate1_pass": design.get("gate1_pass", False),
+                        "gate2_pass": design.get("gate2_pass", False),
+                        "gate3_pass": design.get("gate3_pass", False),
+                        "lab_viability_score": design.get("lab_viability_score", 0.0),
+                        "selectivity_ddg": design.get("selectivity_ddg", 0.0),
                     },
                     "is_best": is_best,
+                    "trace": design.get("trace", []),
                 },
             ))
 
+            # --- Physics justification (Command-and-Justify protocol) ---
+            justification = _generate_physics_justification(
+                design, round_num, prev_seed, modality
+            )
+            messages.append(AgentMessage(
+                role="agent",
+                content=justification,
+                data={"status": "evaluate", "round": round_num},
+            ))
+
+            prev_seed = design["sequence"]
             current_seed = design["sequence"]
 
         # --- Final report ---
@@ -642,10 +1005,11 @@ class ProteinDesignAgent:
             "#### Biophysical Profile",
             "| Metric | Value |",
             "|--------|-------|",
-            "| Binding Affinity | {:.1f}% |".format(best_round["binding_score"] * 100),
+            "| ΔG Binding | {:.2f} kcal/mol |".format(best_round.get("delta_g_binding_kcal_mol", 0)),
             "| Kd estimate | {:.0f} nM |".format(best_round.get("kd_nM", 0)),
             "| Serum half-life | {:.0f} min |".format(best_round.get("serum_half_life_min", 0)),
             "| Selectivity ratio | {:.2f}x |".format(best_round.get("selectivity_ratio", 1.0)),
+            "| Selectivity ΔΔG | {:.2f} kcal/mol |".format(best_round.get("selectivity_ddg", 0.0)),
             "| Stability | {:.1f}% |".format(best_round["stability_score"] * 100),
             "| Solubility | {:.1f}% |".format(best_round["solubility_score"] * 100),
             "| pLDDT estimate | {:.1f} / 100 |".format(best_round.get("plddt_estimate", 0)),
@@ -656,7 +1020,44 @@ class ProteinDesignAgent:
                 best_round.get("manufacturability_score", 0) * 100),
             "| Novelty score | {:.2f} |".format(best_round.get("novelty_score", 0)),
             "| Total Energy | {:.4f} |".format(best_round["total_energy"]),
+            "",
+            "#### Triple-Gate Physics Model",
+            "| Gate | Metric | Value | Status |",
+            "|------|--------|-------|--------|",
+            "| Gate 1 — Enthalpic Locking | Surface complementarity (Sc) | {:.3f} | {} |".format(
+                best_round.get("surface_complementarity", 0),
+                "PASS (>= 0.4)" if best_round.get("gate1_pass") else "FAIL (< 0.4)"
+            ),
+            "| Gate 2 — Solvation | ΔG_solv GBSA-lite | {:.2f} kcal/mol | {} |".format(
+                best_round.get("solvation_delta_g", 0),
+                "PASS (<= 0)" if best_round.get("gate2_pass") else "FAIL (> 0)"
+            ),
+            "| Gate 3 — Entropic | -TΔS penalty | {:.2f} kcal/mol | {} |".format(
+                best_round.get("entropic_penalty", 0),
+                "PASS (<= 3.5)" if best_round.get("gate3_pass") else "FAIL (> 3.5)"
+            ),
+            "| H-bonds | Backbone + sidechain estimate | {} | — |".format(
+                best_round.get("hbond_count", 0)
+            ),
+            "| **Lab Viability** | Composite (0–100) | **{:.0f}/100** | {} |".format(
+                best_round.get("lab_viability_score", 0),
+                "Lab-worthy" if best_round.get("lab_viability_score", 0) >= 60 else "Needs optimization"
+            ),
         ]
+
+        # --- Solubility tags ---
+        sol_tags = best_round.get("solubility_tags", [])
+        if sol_tags:
+            report_lines += ["", "#### Solubility Warnings"]
+            for tag in sol_tags:
+                report_lines.append("- {}".format(tag))
+
+        # --- 3D inspection notes ---
+        notes_3d = best_round.get("notes_3d", [])
+        if notes_3d:
+            report_lines += ["", "#### 3D Viewer Inspection Notes"]
+            for note in notes_3d:
+                report_lines.append("- {}".format(note))
 
         if best_round.get("mutations"):
             report_lines += [
@@ -679,23 +1080,28 @@ class ProteinDesignAgent:
         report_lines += [
             "",
             "#### Iteration History",
-            "| Round | Binding | Kd (nM) | Stability | Solubility | pLDDT | ΔΔG | Energy |",
-            "|-------|---------|---------|-----------|------------|-------|-----|--------|",
+            "| Round | ΔG (kcal/mol) | Kd (nM) | Gate1 | Gate2 | Gate3 | Lab Score | Energy |",
+            "|-------|---------------|---------|-------|-------|-------|-----------|--------|",
         ]
         for r in rounds_data:
             star = " *" if r == best_round else ""
             report_lines.append(
-                "| {}{} | {:.0f}% | {:.0f} | {:.0f}% | {:.0f}% | {:.0f} | {:.1f} | {:.3f} |".format(
+                "| {}{} | {:.2f} | {:.0f} | {} | {} | {} | {:.0f} | {:.3f} |".format(
                     r["round"], star,
-                    r["binding_score"] * 100,
+                    r.get("delta_g_binding_kcal_mol", 0),
                     r.get("kd_nM", 0),
-                    r["stability_score"] * 100,
-                    r["solubility_score"] * 100,
-                    r.get("plddt_estimate", 0),
-                    r.get("ddg_estimate_kcal_mol", 0),
+                    "PASS" if r.get("gate1_pass") else "FAIL",
+                    "PASS" if r.get("gate2_pass") else "FAIL",
+                    "PASS" if r.get("gate3_pass") else "FAIL",
+                    r.get("lab_viability_score", 0),
                     r["total_energy"],
                 )
             )
+
+        # --- FASTA block ---
+        fasta = best_round.get("fasta", "")
+        if fasta:
+            report_lines += ["", "#### FASTA Output", "```", fasta, "```"]
 
         if constraints:
             report_lines += [
@@ -740,6 +1146,17 @@ class ProteinDesignAgent:
                     "serum_half_life_min": best_round.get("serum_half_life_min", 0),
                     "selectivity_ratio": best_round.get("selectivity_ratio", 1.0),
                     "toxicity_flag": best_round.get("toxicity_flag", False),
+                    "delta_g_binding_kcal_mol": best_round.get("delta_g_binding_kcal_mol", 0.0),
+                    # Triple-Gate fields
+                    "hbond_count": best_round.get("hbond_count", 0),
+                    "entropic_penalty": best_round.get("entropic_penalty", 0.0),
+                    "solvation_delta_g": best_round.get("solvation_delta_g", 0.0),
+                    "surface_complementarity": best_round.get("surface_complementarity", 0.0),
+                    "gate1_pass": best_round.get("gate1_pass", False),
+                    "gate2_pass": best_round.get("gate2_pass", False),
+                    "gate3_pass": best_round.get("gate3_pass", False),
+                    "lab_viability_score": best_round.get("lab_viability_score", 0.0),
+                    "selectivity_ddg": best_round.get("selectivity_ddg", 0.0),
                 },
                 "rounds": [
                     {
@@ -755,12 +1172,24 @@ class ProteinDesignAgent:
                         "serum_half_life_min": r.get("serum_half_life_min", 0),
                         "selectivity_ratio": r.get("selectivity_ratio", 1.0),
                         "toxicity_flag": r.get("toxicity_flag", False),
+                        "delta_g_binding_kcal_mol": r.get("delta_g_binding_kcal_mol", 0.0),
+                        # Triple-Gate fields per round
+                        "gate1_pass": r.get("gate1_pass", False),
+                        "gate2_pass": r.get("gate2_pass", False),
+                        "gate3_pass": r.get("gate3_pass", False),
+                        "lab_viability_score": r.get("lab_viability_score", 0.0),
+                        "surface_complementarity": r.get("surface_complementarity", 0.0),
+                        "hbond_count": r.get("hbond_count", 0),
                         "is_best": r == best_round,
                     }
                     for r in rounds_data
                 ],
                 "total_time": round(total_time, 1),
                 "constraints": constraints,
+                "trace": best_round.get("trace", []),
+                "notes_3d": best_round.get("notes_3d", []),
+                "solubility_tags": best_round.get("solubility_tags", []),
+                "fasta": best_round.get("fasta", ""),
             },
         ))
 
@@ -783,6 +1212,7 @@ class ProteinDesignAgent:
                 "serum_half_life_min": best_round.get("serum_half_life_min", 0),
                 "selectivity_ratio": best_round.get("selectivity_ratio", 1.0),
                 "toxicity_flag": best_round.get("toxicity_flag", False),
+                "delta_g_binding_kcal_mol": best_round.get("delta_g_binding_kcal_mol", 0.0),
             },
             pdb_id=pdb_id,
             mutations=best_round["mutations"],

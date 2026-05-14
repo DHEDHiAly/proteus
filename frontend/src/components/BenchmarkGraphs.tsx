@@ -44,10 +44,10 @@ export default function BenchmarkGraphs() {
   const conv = t.convergence;
   const convData = conv.proteus;
 
-  const effData = [
+  const effData = t.time_efficiency ? [
     ...t.time_efficiency.proteus_runs.map((r: any) => ({ time: r.time_s, binding: r.best_nM, method: 'Proteus' })),
     ...t.time_efficiency.competitors.map((c: any) => ({ time: c.time_s, binding: c.best_nM, method: c.method })),
-  ];
+  ] : [];
 
   const beatSota = p.binding_nM < sotaBest;
 
@@ -159,21 +159,47 @@ export default function BenchmarkGraphs() {
         {/* Graph 4: Time Efficiency */}
         <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
           <h3 className="text-[10px] text-gray-500 uppercase tracking-wider font-medium mb-3">Time Efficiency — Speed vs Quality</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
-              <XAxis dataKey="time" stroke="#444" fontSize={10} label={{ value: 'Time (seconds, log)', position: 'insideBottom', style: { fill: '#555', fontSize: 9 } }} scale="log" domain={['auto', 'auto']} />
-              <YAxis dataKey="binding" stroke="#444" fontSize={10} label={{ value: 'Binding (nM)', angle: -90, position: 'insideLeft', style: { fill: '#555', fontSize: 9 } }} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: 8, fontSize: 10 }} />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              <Scatter name="Proteus" data={effData.filter((d: any) => d.method === 'Proteus')} fill="#4caf50" shape="circle" />
-              <Scatter name="AlphaFold" data={effData.filter((d: any) => d.method === 'AlphaFold')} fill="#f44336" shape="diamond" />
-              <Scatter name="SOTA (Lab)" data={effData.filter((d: any) => d.method.includes('SOTA') || d.method.includes('lab'))} fill="#2196f3" shape="triangle" />
-            </ScatterChart>
-          </ResponsiveContainer>
-          <div className="text-[9px] text-gray-600 text-center mt-1">
-            Upper-left = fast + good. Proteus: {p.time_s}s at {p.binding_nM} nM. AlphaFold: ~45s (structure only).
-          </div>
+          {effData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={280}>
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
+                  <XAxis dataKey="time" stroke="#444" fontSize={10} label={{ value: 'Time (seconds, log)', position: 'insideBottom', style: { fill: '#555', fontSize: 9 } }} scale="log" domain={['auto', 'auto']} />
+                  <YAxis dataKey="binding" stroke="#444" fontSize={10} label={{ value: 'Binding (nM)', angle: -90, position: 'insideLeft', style: { fill: '#555', fontSize: 9 } }} />
+                  <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: 8, fontSize: 10 }} />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Scatter name="Proteus" data={effData.filter((d: any) => d.method === 'Proteus')} fill="#4caf50" shape="circle" />
+                  <Scatter name="AlphaFold" data={effData.filter((d: any) => d.method === 'AlphaFold')} fill="#f44336" shape="diamond" />
+                  <Scatter name="SOTA (Lab)" data={effData.filter((d: any) => d.method.includes('SOTA') || d.method.includes('lab'))} fill="#2196f3" shape="triangle" />
+                </ScatterChart>
+              </ResponsiveContainer>
+              <div className="text-[9px] text-gray-600 text-center mt-1">
+                Upper-left = fast + good. Proteus: {p.time_s}s at {p.binding_nM} nM. AlphaFold: ~45s (structure only).
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-[280px] space-y-4 text-center">
+              <div className="grid grid-cols-2 gap-6 w-full max-w-xs">
+                <div>
+                  <div className="text-2xl font-bold text-green-400">{p.time_s}s</div>
+                  <div className="text-[10px] text-gray-500 mt-1">Proteus runtime</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-red-400">~45s</div>
+                  <div className="text-[10px] text-gray-500 mt-1">AlphaFold (structure only)</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-300">{p.binding_nM} nM</div>
+                  <div className="text-[10px] text-gray-500 mt-1">Proteus binding</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-red-400">{af.binding_estimate_nM} nM</div>
+                  <div className="text-[10px] text-gray-500 mt-1">AlphaFold estimate</div>
+                </div>
+              </div>
+              <div className="text-[9px] text-gray-600">Proteus runs full MCMC optimization in {p.time_s}s and finds {improvementPct}% better binders.</div>
+            </div>
+          )}
         </div>
       </div>
 

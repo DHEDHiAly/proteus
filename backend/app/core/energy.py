@@ -142,6 +142,156 @@ class EnergyOracle:
         t_half = base + pro_bonus + charged_bonus - hydro_penalty
         return float(np.clip(t_half, 2.0, 480.0))
 
+    def compute_delta_g_kcal_mol(self, kd_nM: float) -> float:
+        """
+        Convert Kd (nanomolar) to ΔG binding (kcal/mol) at 310K (physiological temp).
+        ΔG = RT × ln(Kd) where RT = 0.616 kcal/mol at 310K.
+        Returns a negative value; lower (more negative) = tighter binding.
+        AutoDock Vina convention: < -6 kcal/mol is considered promising.
+        Expected range for our candidates: −14 to −7 kcal/mol.
+        """
+        kd_M = max(float(kd_nM), 0.001) * 1e-9  # clamp to avoid log(0)
+        return float(0.616 * np.log(kd_M))
+
+    def compute_hbond_count(self, seq: str) -> int:
+        """
+        Estimate H-bond count from sequence composition.
+        Backbone NH-CO: one per peptide bond (~n-2 for a folded peptide).
+        Side chain donors/acceptors: N, Q, S, T, D, E, H, R, K, Y, W each contribute ~0.5 H-bonds.
+        Heuristic only — not a crystallographic count.
+        """
+        if not seq:
+            return 0
+        n = len(seq)
+        backbone = max(0, n - 2)
+        hbond_capable = sum(1 for aa in seq if aa in "NQSTDEHRKYW")
+        sidechain = int(hbond_capable * 0.5)
+        return backbone + sidechain
+
+    def compute_entropic_penalty(self, seq: str) -> float:
+        """
+        Entropic penalty (-TΔS) estimate for binding (kcal/mol).
+        Base: n × 0.05 kcal/mol (conformational entropy loss per residue on binding).
+        Gly: +0.5/residue (flexible backbone → larger conformational search).
+        Pro: -0.3/residue (preorganized ring → less entropy loss).
+        Clamp [0, 15] kcal/mol.
+        """
+        n = len(seq)
+        if n == 0:
+            return 0.0
+        base = n * 0.05
+        gly_pen = seq.count("G") * 0.5
+        pro_bonus = seq.count("P") * 0.3
+        penalty = base + gly_pen - pro_bonus
+        return float(np.clip(penalty, 0.0, 15.0))
+
+    def compute_solvation_delta_g(self, seq: str) -> float:
+        """
+        GBSA-lite solvation ΔG estimate (kcal/mol).
+        Hydrophobic gain = max(0, GRAVY) × n × 0.6 (burial gain from hydrophobic contacts).
+        Charge desolvation cost = n_charged × 0.8 kcal/mol per charged residue.
+        ΔG_solv = -(hydrophobic_gain - charge_cost).
+        Negative = net favorable (hydrophobic burial dominates).
+        Positive = net unfavorable (charge desolvation dominates).
+        Gate 2 threshold: ΔG_solv ≤ 0.0 kcal/mol.
+        Clamp [-20, 10] kcal/mol.
+        """
+        n = len(seq)
+        if n == 0:
+            return 0.0
+        gravy = self._compute_gravy(seq)
+        hydrophobic_gain = max(0.0, gravy) * n * 0.6
+        n_charged = sum(1 for aa in seq if aa in "RKDE")
+        charge_cost = n_charged * 0.8
+        dg_solv = -(hydrophobic_gain - charge_cost)
+        return float(np.clip(dg_solv, -20.0, 10.0))
+
+    def compute_surface_complementarity(self, seq: str) -> float:
+        """
+        Surface complementarity (Sc) proxy score [0, 1].
+        Estimates chemical/shape fit to target binding pocket.
+        - Sequence diversity (Shannon entropy): diverse AAs fill pocket better.
+        - Aromatic ratio: pi-stacking and hydrophobic contacts.
+        - Charged ratio: salt bridges and H-bond anchors.
+        - Pocket residue coverage: bonus when sequence length covers pocket positions.
+        - Penalty for long hydrophobic stretches (≥ 5 residues in ILFVWM) → poor shape fit.
+        Gate 1 threshold: Sc ≥ 0.4.
+        """
+        if not seq:
+            return 0.0
+        n = len(seq)
+        aromatic_ratio = sum(1 for aa in seq if aa in "FWY") / n
+        charged_ratio = sum(1 for aa in seq if aa in "RKDE") / n
+        counts: dict = {}
+        for aa in seq:
+            counts[aa] = counts.get(aa, 0) + 1
+        diversity = -sum((c / n) * np.log2(c / n + 1e-10) for c in counts.values()) / 4.322
+        pocket_score = 0.0
+        if self.target_pocket_residues:
+            pocket_in_range = sum(1 for pos in self.target_pocket_residues if pos < n)
+            pocket_score = min(pocket_in_range / max(len(self.target_pocket_residues), 1), 1.0)
+        sc = (
+            0.35 * float(diversity)
+            + 0.30 * min(aromatic_ratio * 4.0, 1.0)
+            + 0.20 * min(charged_ratio * 3.0, 1.0)
+            + 0.15 * pocket_score
+        )
+        # Penalty for long hydrophobic stretches
+        max_stretch = 0
+        cur = 0
+        for aa in seq:
+            if aa in "ILFVWM":
+                cur += 1
+                if cur > max_stretch:
+                    max_stretch = cur
+            else:
+                cur = 0
+        if max_stretch >= 5:
+            sc -= 0.15
+        return float(np.clip(sc, 0.0, 1.0))
+
+    def compute_lab_viability_score(
+        self, seq: str, delta_g: float,
+        gate1_pass: bool, gate2_pass: bool, gate3_pass: bool
+    ) -> float:
+        """
+        Lab viability composite score (0–100).
+        - Thermodynamic gate: ΔG ≤ -6 kcal/mol → +30 pts; ΔG [-6, -4] → +15 pts.
+        - Gate 1 (Sc ≥ 0.4) → +25 pts.
+        - Gate 2 (ΔG_solv ≤ 0) → +20 pts.
+        - Gate 3 (entropic penalty ≤ 3.5) → +15 pts.
+        - Manufacturability bonus: 0–10 pts.
+        """
+        score = 0.0
+        if delta_g <= -6.0:
+            score += 30.0
+        elif delta_g < -4.0:
+            score += 15.0
+        if gate1_pass:
+            score += 25.0
+        if gate2_pass:
+            score += 20.0
+        if gate3_pass:
+            score += 15.0
+        manuf = self._compute_manufacturability_score(seq)
+        score += manuf * 10.0
+        return float(np.clip(score, 0.0, 100.0))
+
+    def compute_selectivity_ddg(self, seq: str) -> float:
+        """
+        ΔΔG selectivity (kcal/mol) = ΔG_off_target − ΔG_on_target.
+        Positive = candidate prefers the configured target over non-specific binding.
+        Computed by temporarily clearing pocket residues to simulate off-target binding.
+        """
+        kd_on = self.compute_kd_nM(self._compute_binding_score(seq))
+        dg_on = self.compute_delta_g_kcal_mol(kd_on)
+        saved_pocket = self.target_pocket_residues
+        self.target_pocket_residues = []
+        kd_off = self.compute_kd_nM(self._compute_binding_score(seq))
+        dg_off = self.compute_delta_g_kcal_mol(kd_off)
+        self.target_pocket_residues = saved_pocket
+        return float(dg_off - dg_on)
+
     def compute_selectivity(self, seq: str) -> float:
         """
         On-target / off-target binding selectivity ratio.
@@ -199,6 +349,19 @@ class EnergyOracle:
         serum_half_life = self.compute_serum_half_life(sequence)
         selectivity = self.compute_selectivity(sequence)
         toxicity_flag = selectivity < 2.0
+        delta_g = self.compute_delta_g_kcal_mol(kd_nm)
+        # Triple-Gate Physics Model
+        hbond_count = self.compute_hbond_count(sequence)
+        entropic_penalty = self.compute_entropic_penalty(sequence)
+        solvation_delta_g = self.compute_solvation_delta_g(sequence)
+        surface_complementarity = self.compute_surface_complementarity(sequence)
+        gate1_pass = surface_complementarity >= 0.4   # Gate 1: Enthalpic Locking (Sc)
+        gate2_pass = solvation_delta_g <= 0.0          # Gate 2: Solvation ΔG (GBSA-lite)
+        gate3_pass = entropic_penalty <= 3.5           # Gate 3: Entropic Penalty
+        lab_viability_score = self.compute_lab_viability_score(
+            sequence, delta_g, gate1_pass, gate2_pass, gate3_pass
+        )
+        selectivity_ddg = self.compute_selectivity_ddg(sequence)
         return {
             "sequence": sequence,
             "binding_score": float(binding),
@@ -219,6 +382,17 @@ class EnergyOracle:
             "serum_half_life_min": float(serum_half_life),
             "selectivity_ratio": float(selectivity),
             "toxicity_flag": bool(toxicity_flag),
+            "delta_g_binding_kcal_mol": float(delta_g),
+            # Triple-Gate Physics Model
+            "hbond_count": int(hbond_count),
+            "entropic_penalty": float(entropic_penalty),
+            "solvation_delta_g": float(solvation_delta_g),
+            "surface_complementarity": float(surface_complementarity),
+            "gate1_pass": bool(gate1_pass),
+            "gate2_pass": bool(gate2_pass),
+            "gate3_pass": bool(gate3_pass),
+            "lab_viability_score": float(lab_viability_score),
+            "selectivity_ddg": float(selectivity_ddg),
         }
 
     def _compute_binding_score(self, seq: str) -> float:

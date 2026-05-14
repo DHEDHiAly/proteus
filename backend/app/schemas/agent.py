@@ -12,6 +12,7 @@ class PatientInfo(BaseModel):
     previous_treatments: str = Field(default="", description="Prior therapies")
     brain_metastasis: bool = Field(False, description="CNS involvement")
     notes: str = Field(default="", description="Additional clinical notes")
+    modality: str = Field(default="", description="Therapeutic modality (e.g. peptide, antibody, small molecule)")
 
 
 class AgentMessage(BaseModel):

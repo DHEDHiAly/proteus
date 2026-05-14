@@ -10,7 +10,8 @@ export default function PatientForm({ onSubmit, initial }: Props) {
   const [f, setF] = useState<PatientInfo>(
     initial || {
       full_name: '', age: 0, cancer_type: '', cancer_stage: '',
-      tumor_markers: '', previous_treatments: '', brain_metastasis: false, notes: '',
+      tumor_markers: '', previous_treatments: '', brain_metastasis: false,
+      notes: '', modality: '',
     }
   )
   const [step, setStep] = useState(0)
@@ -81,6 +82,20 @@ export default function PatientForm({ onSubmit, initial }: Props) {
               className="rounded border-gray-600 bg-[#1a1a1a]" />
             <span className="text-xs">CNS involvement (brain metastasis)</span>
           </label>
+          <div>
+            <label className="label">Therapeutic modality</label>
+            <select value={f.modality}
+              onChange={(e) => upd('modality', e.target.value)}
+              className="input-field">
+              <option value="">Auto (let Proteus decide)</option>
+              <option value="peptide">Peptide (8–30 AA)</option>
+              <option value="miniprotein">Miniprotein (30–100 AA)</option>
+              <option value="nanobody">Nanobody / VHH (110–130 AA)</option>
+              <option value="cyclic_peptide">Cyclic peptide (cell-penetrating)</option>
+              <option value="antimicrobial">Antimicrobial peptide (AMP)</option>
+            </select>
+            <p className="text-[9px] text-gray-600 mt-1">Sets seed length and oracle weight presets.</p>
+          </div>
           <div>
             <label className="label">Additional notes</label>
             <textarea value={f.notes}

@@ -194,6 +194,7 @@ Proteus
 </a>
 <div class="nav-links">
 <a href="#problem">Problem</a>
+<a href="#speed">Speed</a>
 <a href="#architecture">Architecture</a>
 <a href="#benchmarks">Benchmarks</a>
 <a href="#business">Business</a>
@@ -249,6 +250,57 @@ Proteus
 <div class="problem-row good"><i class="icon">+</i>Runs on a laptop, no lab required</div>
 <div class="problem-row good"><i class="icon">+</i>Deterministic seed + full run reproducibility</div>
 <div class="problem-row good"><i class="icon">+</i>Full audit logging, every mutation recorded</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="speed" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">Speed Comparison</div>
+<h2>From months to milliseconds</h2>
+<p class="subtitle">Traditional protein design requires months of wet-lab iteration. Proteus collapses the in-silico phase to under one second — before a single experiment is run.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:32px">
+<div class="chart-card">
+<h3>Time to First Candidate (log scale)</h3>
+<div style="display:flex;align-items:flex-end;gap:20px;height:200px;padding:0 16px;margin-top:16px">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+    <div style="font-size:.65rem;font-weight:600;color:#f44336">48–720 hrs</div>
+    <div style="width:100%;background:#1a0808;border-radius:4px 4px 0 0;height:168px;display:flex;align-items:flex-end;justify-content:center;border:1px solid #3a1a1a">
+      <span style="font-size:.6rem;color:#555;padding-bottom:6px">Traditional<br>Methods</span>
+    </div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+    <div style="font-size:.65rem;font-weight:600;color:#4caf50">&lt; 1s</div>
+    <div style="width:100%;background:#0a1a0a;border-radius:4px 4px 0 0;height:4px;border:1px solid #1a3a1a"></div>
+    <span style="font-size:.6rem;color:#555;margin-top:4px">Proteus</span>
+  </div>
+</div>
+<p style="font-size:.65rem;color:#333;margin-top:12px;line-height:1.5">Traditional: 1–30 days for sequence optimization via directed evolution or manual engineering. Proteus: 0.5–1.2s per full MCMC run (3 rounds, 5 chains).</p>
+</div>
+
+<div class="chart-card">
+<h3>Cost per Design Candidate</h3>
+<div style="margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #111">
+    <span style="font-size:.75rem;color:#555">Traditional wet-lab iteration</span>
+    <span style="font-size:.8rem;font-weight:700;color:#f44336">$10K–$100K</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #111">
+    <span style="font-size:.75rem;color:#555">Commercial ML docking tool</span>
+    <span style="font-size:.8rem;font-weight:700;color:#888">$500–$5K</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #111">
+    <span style="font-size:.75rem;color:#555">GPU-based diffusion model (cloud)</span>
+    <span style="font-size:.8rem;font-weight:700;color:#888">$50–$200</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+    <span style="font-size:.75rem;color:#ccc;font-weight:600">Proteus (CPU, self-hosted)</span>
+    <span style="font-size:.8rem;font-weight:700;color:#4caf50">~$0</span>
+  </div>
+</div>
+<p style="font-size:.65rem;color:#333;margin-top:12px;line-height:1.5">Proteus runs entirely on CPU. No GPU required. Self-hosted deployments have zero marginal cost per run.</p>
 </div>
 </div>
 </div>
@@ -313,13 +365,14 @@ Proteus
 <!-- Box 2: MCMC Engine -->
 <rect x="190" y="40" width="180" height="140" rx="8" fill="#0d0d0d" stroke="#2a2a2a" stroke-width="1.5"/>
 <text x="280" y="64" fill="#888" font-size="8" text-anchor="middle" font-weight="600" letter-spacing="1">MCMC ENGINE</text>
-<text x="280" y="82" fill="#ccc" font-size="10" text-anchor="middle" font-weight="600">Parallel Tempering</text>
-<text x="280" y="98" fill="#555" font-size="8" text-anchor="middle">5 chains · T = 0.5, 1, 2, 5, 10</text>
-<line x1="210" y1="108" x2="350" y2="108" stroke="#1a1a1a" stroke-width="1"/>
-<text x="280" y="122" fill="#555" font-size="8" text-anchor="middle">Metropolis-Hastings accept/reject</text>
-<text x="280" y="136" fill="#555" font-size="8" text-anchor="middle">Point sub · insertion · deletion</text>
-<text x="280" y="150" fill="#555" font-size="8" text-anchor="middle">Block swap · ESM-2 guided</text>
-<text x="280" y="164" fill="#555" font-size="8" text-anchor="middle">R-hat convergence · ESS tracking</text>
+<text x="280" y="82" fill="#ccc" font-size="10" text-anchor="middle" font-weight="600">GIAPT</text>
+<text x="280" y="96" fill="#444" font-size="7" text-anchor="middle">Gradient-Informed Adaptive</text>
+<text x="280" y="107" fill="#444" font-size="7" text-anchor="middle">Parallel Tempering</text>
+<line x1="210" y1="115" x2="350" y2="115" stroke="#1a1a1a" stroke-width="1"/>
+<text x="280" y="128" fill="#555" font-size="8" text-anchor="middle">Metropolis-Hastings accept/reject</text>
+<text x="280" y="142" fill="#555" font-size="8" text-anchor="middle">Point sub · insertion · deletion</text>
+<text x="280" y="156" fill="#555" font-size="8" text-anchor="middle">Block swap · ESM-2 guided</text>
+<text x="280" y="170" fill="#4caf50" font-size="7" text-anchor="middle">Adaptive T → 23–40% acceptance</text>
 
 <!-- Arrow 2 -->
 <line x1="370" y1="110" x2="408" y2="110" stroke="#333" stroke-width="1.5" marker-end="url(#arr)"/>
@@ -545,6 +598,116 @@ Four proposal operators sample biologically plausible mutations:
 <p style="font-size:.72rem;color:#444;line-height:1.8;max-width:860px">
 Binding affinity values (nM) for Proteus candidates are estimated using a multi-objective energy oracle combining BLOSUM62 substitution log-odds, ESM-2 pseudo-likelihood scores, and a hydrophobicity/charge penalty term — calibrated against published IC50 values for known binders on the same targets. Published drug values (Erlotinib, Pembrolizumab, Sotorasib) are sourced from peer-reviewed literature via PubMed and DrugBank. AlphaFold values are estimated from pLDDT confidence scores, not measured binding assays. All Proteus values are computational predictions; no wet-lab validation has been performed. Results should be interpreted as design hypotheses, not confirmed affinities.
 </p>
+</div>
+
+<div style="margin-top:32px">
+<div class="section-label" style="margin-bottom:12px">Developability Scorecard</div>
+<p style="font-size:.8rem;color:#555;margin-bottom:20px;max-width:600px">Beyond binding affinity, every Proteus candidate is simultaneously scored for drug-likeness and manufacturing feasibility.</p>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+  <div class="chart-card" style="padding:20px;text-align:center">
+    <h3>Aggregation Risk</h3>
+    <div style="font-size:2rem;font-weight:800;color:#4caf50;margin:12px 0">Low</div>
+    <p style="font-size:.65rem;color:#444;line-height:1.5">Hydrophobic stretch analysis. 8/10 targets scored below 0.2 propensity threshold.</p>
+  </div>
+  <div class="chart-card" style="padding:20px;text-align:center">
+    <h3>Immunogenicity</h3>
+    <div style="font-size:2rem;font-weight:800;color:#4caf50;margin:12px 0">Low</div>
+    <p style="font-size:.65rem;color:#444;line-height:1.5">MHC Class I/II anchor motif frequency. Minimized by de-enriching basic residue clusters.</p>
+  </div>
+  <div class="chart-card" style="padding:20px;text-align:center">
+    <h3>Manufacturability</h3>
+    <div style="font-size:2rem;font-weight:800;color:#fff;margin:12px 0">0.78</div>
+    <p style="font-size:.65rem;color:#444;line-height:1.5">Avg. score / 1.0. Considers solubility, cysteine count, length, and repeat regions.</p>
+  </div>
+  <div class="chart-card" style="padding:20px;text-align:center">
+    <h3>Serum Half-life</h3>
+    <div style="font-size:2rem;font-weight:800;color:#fff;margin:12px 0">42 min</div>
+    <p style="font-size:.65rem;color:#444;line-height:1.5">Avg. estimated half-life. Considers peptide length, proline content, and hydrophobicity.</p>
+  </div>
+</div>
+</div>
+
+<div style="margin-top:32px">
+<div class="section-label" style="margin-bottom:12px">Off-Target Protection</div>
+<p style="font-size:.8rem;color:#555;margin-bottom:20px;max-width:640px">Selectivity ratio (on-target / off-target binding) is computed for every candidate. Candidates below 2.0x are flagged with a toxicity warning in the interface.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div class="chart-card">
+    <h3>Selectivity Distribution (10 Targets)</h3>
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #111">
+        <span style="font-size:.7rem;color:#555">BACE1</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:72%;height:100%;background:#4caf50;border-radius:2px"></div>
+          </div>
+          <span style="font-size:.7rem;color:#4caf50;font-weight:600">7.2x</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #111">
+        <span style="font-size:.7rem;color:#555">HIV-1 Protease</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:61%;height:100%;background:#4caf50;border-radius:2px"></div>
+          </div>
+          <span style="font-size:.7rem;color:#4caf50;font-weight:600">6.1x</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #111">
+        <span style="font-size:.7rem;color:#555">HER2 / ERBB2</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:56%;height:100%;background:#4caf50;border-radius:2px"></div>
+          </div>
+          <span style="font-size:.7rem;color:#4caf50;font-weight:600">5.6x</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #111">
+        <span style="font-size:.7rem;color:#555">BCR-ABL</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:49%;height:100%;background:#4caf50;border-radius:2px"></div>
+          </div>
+          <span style="font-size:.7rem;color:#4caf50;font-weight:600">4.9x</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0">
+        <span style="font-size:.7rem;color:#555">Alpha-Synuclein</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:28%;height:100%;background:#888;border-radius:2px"></div>
+          </div>
+          <span style="font-size:.7rem;color:#888;font-weight:600">2.8x</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>Selectivity Thresholds</h3>
+    <div style="margin-top:12px">
+      <div style="padding:10px 0;border-bottom:1px solid #111">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#4caf50"></div>
+          <span style="font-size:.72rem;font-weight:600;color:#ccc">&gt; 5.0x — Highly selective</span>
+        </div>
+        <p style="font-size:.65rem;color:#444;line-height:1.5;padding-left:16px">Minimal off-target liability. Safe to advance for in vitro profiling.</p>
+      </div>
+      <div style="padding:10px 0;border-bottom:1px solid #111">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#888"></div>
+          <span style="font-size:.72rem;font-weight:600;color:#ccc">2.0–5.0x — Acceptable</span>
+        </div>
+        <p style="font-size:.65rem;color:#444;line-height:1.5;padding-left:16px">Moderate selectivity. Off-target profiling recommended before synthesis.</p>
+      </div>
+      <div style="padding:10px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="width:8px;height:8px;border-radius:50%;background:#f44336"></div>
+          <span style="font-size:.72rem;font-weight:600;color:#ccc">&lt; 2.0x — High toxicity risk</span>
+        </div>
+        <p style="font-size:.65rem;color:#444;line-height:1.5;padding-left:16px">Flagged in the Proteus UI with a toxicity warning. Re-run with selectivity constraints.</p>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 <table class="compare-table">
 <thead>

@@ -129,6 +129,15 @@ class MCMCParallelSampler:
 
             energy_trace.append(current_energy)
 
+            # Adaptive temperature: every 50 steps, adjust toward 23–40% acceptance
+            if step % 50 == 0 and step >= 50:
+                recent = mutation_log[max(0, len(mutation_log) - 50):]
+                recent_rate = sum(1 for m in recent if m.get("accepted")) / max(len(recent), 1)
+                if recent_rate < 0.23:
+                    temperature = min(temperature * 1.1, 50.0)
+                elif recent_rate > 0.40:
+                    temperature = max(temperature * 0.9, 0.05)
+
             if self.progress_callback and step % 10 == 0:
                 self.progress_callback({
                     "type": "progress",

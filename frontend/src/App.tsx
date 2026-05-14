@@ -105,9 +105,7 @@ export default function App() {
         path="/agent"
         element={
           <ProtectedRoute>
-            <Layout>
-              <AgentPage />
-            </Layout>
+            <AgentPage />
           </ProtectedRoute>
         }
       />

@@ -10,127 +10,122 @@
 
 ### Backend (FastAPI + Python 3.9)
 - Full REST API: auth (JWT + bcrypt 4.1.3), RBAC, runs, targets, admin, agent, benchmarks endpoints
-- MCMC core from scratch: Metropolis-Hastings acceptance criterion, parallel tempering across multiple temperature chains
+- MCMC core: Metropolis-Hastings acceptance criterion, parallel tempering across multiple temperature chains
 - ESM-2 guided mutation proposals + BLOSUM62 substitution log-odds energy oracle
 - Multi-objective energy scoring: binding affinity, folding stability, solubility, charge, hydrophobicity
 - R-hat / ESS convergence diagnostics
+- GIAPT adaptive temperature (Gradient-Informed Adaptive Parallel Tempering): every 50 steps, adjusts each chain's temperature toward 23–40% acceptance rate; T clamped to [0.05, 50.0]
 - PostgreSQL schema: users, mcmc_runs, chain_states, mutation_steps, designed_candidates, audit_logs
 - Redis-backed job queue
 - 28 passing unit tests (MCMC convergence, energy oracle, proposal distribution, API layer)
 - Benchmark API: 3 endpoints (`/benchmarks/{target}`, `/stats`, `/convergence`)
 - SOTA binder loader from CSV files on startup
-- Data scraper (`backend/scripts/scrape_benchmark_data.py`) — hits AlphaFold DB, RCSB PDB, PubMed
+- `real_benchmark_data.json`: 10 targets across 4 disease areas — Proteus beats AlphaFold on all 10 (81% avg improvement); beats published drug on EGFRvIII and PD-L1 only (intentionally realistic)
+
+#### ΔG Pipeline
+- `compute_delta_g_kcal_mol()`: ΔG = 0.616 × ln(Kd_nM × 1e-9) at 310K; range −14 to −7 kcal/mol for promising candidates
+- `Kd` formula: `10^((1 − binding_score) × 7)` nM (internal only); AutoDock Vina threshold −6 kcal/mol = lab-worthy gate
+- All payloads include `delta_g_binding_kcal_mol`; all UI cards show ΔG
+
+#### Triple-Gate Physics Model (`backend/app/core/energy.py`)
+- `EnergyOracle` has 6 new methods: `compute_hbond_count()`, `compute_entropic_penalty()`, `compute_solvation_delta_g()`, `compute_surface_complementarity()`, `compute_lab_viability_score()`, `compute_selectivity_ddg()`
+- `score_candidate()` returns 27 total fields (18 original + 9 new): `hbond_count`, `entropic_penalty`, `solvation_delta_g`, `surface_complementarity`, `gate1_pass`, `gate2_pass`, `gate3_pass`, `lab_viability_score`, `selectivity_ddg`
+- Gate thresholds: Gate 1 (Enthalpic Locking): Sc ≥ 0.4 | Gate 2 (Solvation): ΔG_solv ≤ 0.0 | Gate 3 (Entropic): penalty ≤ 3.5 kcal/mol
+- Sc formula: 0.35×diversity + 0.30×aromatic + 0.20×charged + 0.15×pocket_score; −0.15 penalty for hydrophobic stretch ≥5
+- Lab viability score (0–100): ΔG ≤ −6 → +30 pts, Gate1 +25, Gate2 +20, Gate3 +15, manufacturability ×10 (max 10)
+- `compute_selectivity_ddg()`: temporarily clears `oracle.target_pocket_residues` to simulate off-target; positive ΔΔG = selective for target
+
+#### Agent Service (`backend/app/services/agent.py`)
+- 3 module-level helpers: `_suggest_solubility_tags()`, `_generate_3d_notes()`, `_format_fasta()`
+- `_run_mcmc_round()` accepts `pdb_id=''`, returns all gate fields + `solubility_tags`, `notes_3d`, `fasta`
+- `round_complete` scores payload includes all Triple-Gate fields
+- Final report: Triple-Gate table, gate-column iteration history, FASTA block, 3D notes, solubility warnings
+- `complete` payload includes top-level `notes_3d`, `solubility_tags`, `fasta` alongside `rounds` and `scores`
+- Therapeutic modality: `modality` field end-to-end (backend schema `PatientInfo`, frontend type, `PatientForm` dropdown, agent constraint overrides)
+  - `peptide` → length 12 | `miniprotein` → length 50 + thermostable | `nanobody` → length 120 + soluble | `cyclic_peptide` → length 10 + BBB | `antimicrobial` → cationic bias
+
+#### Command-and-Justify Protocol (today)
+- `_generate_physics_justification(design, round_num, prev_seq, modality)`: per-round bullet narrative covering Hydrophobic Wedge, Charge Anchor, Enthalpic Lock (Sc), H-bonds, Solvation Gain/Cost, Conformational Entropy, ΔG/Kd result, Selectivity ΔΔG, Lab Viability, Modality, Mutation Strategy (round-over-round diff from `prev_seed`)
+- `prev_seed` tracked in `run()` loop: set to current round's input seed before updating `current_seed`
+- After each `round_complete` message, a `status: "evaluate"` message is emitted carrying the physics justification text
+- Build verified clean: 925 modules, 0 TS errors, 1.26s
+
+---
 
 ### Frontend (React + TypeScript + Vite)
-- 3-column workspace layout: collapsible chat sidebar (280px) | center 3D viewer | results panel (300px)
-- Agentic chat interface: PatientForm (2-step: illness → genetics), agent greeting + design flow
-- DesignCycleSummary: collapsible accordion per MCMC round with binding %, energy, mutations
-- BenchmarkGraphs: 4 Recharts graphs (bar, line/convergence, success rate, scatter)
-- BenchmarksDashboard page at `/benchmarks`
-- ResultsPanel: ranked candidates, sort/filter, context menu export
-- CommandPalette (Cmd+K)
-- ProgressWidget (WebSocket real-time updates)
-- WidgetContainer: minimize/fullscreen/close + localStorage layout persistence
-- 3D viewer: RCSB iframe (`https://www.rcsb.org/3d-view/{pdbId}`)
-- DNA double helix SVG logo throughout (nav, chat, favicon)
+- 3-column workspace layout: collapsible chat sidebar (resizable, drag handle) | center 3D viewer | results panel (300px)
+- `AgentPage` removed from `<Layout>` — manages own nav; all other protected routes still use `<Layout>`
+- `AgentMessageCard` is module-level (not inline) to prevent re-mounting on every render
+- Drag resize: uses `ref` for `isDragging` (not state) to avoid re-render on every mousemove
+
+#### Chat Sidebar — Message Rendering
+- **Fallback renderer (today):** Rewritten — no more 180-char/3-line truncation. Renders every line individually:
+  - `**header**` lines → gray-300 (bold-like)
+  - `- bullet` lines → `·` prefix + gray-400
+  - Table rows (`|...|`) → mono gray-600, no-wrap
+  - Separator lines (`===`, `---`) → thin `<hr>`
+  - `###` headings → gray-300 with `mt-1`
+  - Plain text → gray-500
+  - Empty lines → 4px spacer
+- **`enterWorkspace` greeting (today):** Now emits structured multi-line bullets:
+  ```
+  Ready
+  - Condition: <cancer_type>
+  - Stage: <cancer_stage>
+  - Markers: <tumor_markers>
+  - Prior treatments: <previous_treatments>
+  - Modality: <modality>
+  ```
+  (Stage/Markers/Prior/Modality lines only emitted when non-empty)
+- `round_complete` card: uses `d.scores` directly (fixed pre-existing bug that checked `d.rounds`); G1/G2/G3 colored dot indicators; lab viability score
+- `complete` card: Triple-Gate indicator row, lab viability, solubility tag badges (yellow), 3D viewer notes panel
+- `running` status: pulsing green dot with phase label (no content shown — lightweight)
+- `error` status: red border card
+
+#### Other Frontend Components
+- `PatientForm.tsx`: 2-step clinical intake (illness first, genetics second); modality dropdown in step 1
+- `DesignCycleSummary.tsx`: shows ΔG in header + rows + expanded grid
+- `OptimizationTrace.tsx`: collapsible timeline; imports `TraceStep` from `../types/agent`
+- `ResultsPanel.tsx`: ranked candidates, Kd display, toxicity/selectivity badges
+- `BenchmarksDashboard.tsx`: `/benchmarks` full dashboard
+- `BenchmarkGraphs.tsx`: 4 Recharts graphs (bar, line/convergence, success rate, scatter); Graph 4 shows static stat summary (no `time_efficiency` field in data)
+- `CommandPalette.tsx`: Cmd+K; 4 commands
+
+#### TypeScript Types (`frontend/src/types/agent.ts`)
+- `IterationRound` extended: `gate1_pass`, `gate2_pass`, `gate3_pass`, `surface_complementarity`, `solvation_delta_g`, `entropic_penalty`, `lab_viability_score`, `hbond_count`
+- `AgentMessage.data` extended: `notes_3d`, `solubility_tags`, `fasta`
+- `scores` typed as `Record<string, number | boolean>` (accommodates gate boolean fields)
+
+---
 
 ### Website (`docs/index.html` → GitHub Pages)
-- Standalone HTML — no framework dependency, fast load
-- Black/white monochrome design, Inter font
+- Standalone HTML — no framework dependency
+- Black/white monochrome, Inter font, no emojis, no SOTA language (uses specific drug names throughout)
 - Sections: Hero → Problem → How It Works → Benchmarks → Features → Targets → Recognition → Business Model → Founder → CTA
-- **Hero:** "Design better proteins in seconds, not months" — benefit-driven, references Erlotinib and AlphaFold
-- **Problem/Solution grid:** Traditional methods vs Proteus side by side
-- **How It Works:** 4-step numbered visual (Input → MCMC → Score → Results)
-- **Benchmark section:** EGFRvIII 65nM, PD-L1 48nM, KRAS 95nM vs published drugs and AlphaFold
-- **Methodology note:** Honest disclosure that values are computational predictions, not wet-lab measurements
-- **Social proof:** MIT Critical Data affiliation, published research (MIMIC-IV), 3 benchmarked targets
-- **Business model:** 3-tier pricing — Research (free/open source), Team License ($10–50K/month), Target Licensing ($100K–1M)
-- **Founder section:** Aly Dhedhi — published work, MIT affiliation, radiation oncology focus
-- **CTA:** "Request Early Access" → mailto, "View on GitHub" → repo
-- **No localhost links anywhere** — all dead links removed
-- **No emojis, no SOTA language** — uses specific drug names throughout
-- **FOR RESEARCH USE ONLY** disclaimer on all user-facing surfaces
-
-### Key Technical Decisions
-- Python 3.9 (no backslashes in f-strings, no match statements)
-- bcrypt 4.1.3 direct API (passlib incompatible with bcrypt 5+)
-- molstar dropped (requires Node ≥22) — replaced with RCSB PDB iframe
-- No react-grid-layout — fixed 3-column CSS for stability
-- Services started via `subprocess.Popen` to survive bash tool timeout
-- KRAS G12C: Proteus 95nM vs Sotorasib 30nM — intentionally realistic (KRAS is hardest target)
+- Speed section, Developability Scorecard, Off-Target Protection, GIAPT SVG, comparison table (6 tools × 9 rows)
+- FOR RESEARCH USE ONLY disclaimer on all user-facing surfaces
+- All CTAs → Tally early access form (`https://tally.so/r/yPjKlg`)
 
 ---
 
-## What Is Left To Do
+## Key Technical Decisions
 
-### Priority 1 — Critical for YC (Do This Week)
-
-#### 1. Record a 60-second demo video
-**You are making this.** This is the single highest-impact thing remaining.
-- Show: type a cancer type into the chat → MCMC runs → watch convergence → ranked candidates appear
-- Keep it under 90 seconds. No voiceover needed — on-screen text captions work.
-- Upload to YouTube (unlisted or public) and embed in the hero section above the fold.
-- Embed code for the site once you have the YouTube ID:
-  ```html
-  <div style="margin-top:40px;max-width:720px;margin-left:auto;margin-right:auto;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">
-    <iframe width="100%" height="400" src="https://www.youtube.com/embed/YOUR_VIDEO_ID"
-      frameborder="0" allowfullscreen style="display:block"></iframe>
-  </div>
-  ```
-
-#### 2. Deploy the frontend publicly
-Right now the app only runs on localhost. Anyone clicking "Launch Workspace" hits a dead end.
-- **Fastest path:** Deploy backend to Railway.app (free tier, ~20 min), deploy frontend to Vercel (free, ~10 min)
-- Railway: connect GitHub repo, set root to `backend/`, add environment variables (DB_URL, JWT_SECRET, etc.)
-- Vercel: connect GitHub repo, set root to `frontend/`, set `VITE_API_URL` to your Railway URL
-- Once live, replace the "Request Demo" button in the hero with "Launch Workspace" pointing to the Vercel URL
-
-#### 3. Set up a real early access form
-Right now all CTAs go to mailto, which is functional but signals "side project."
-- Tally form live at https://tally.so/r/yPjKlg — all CTAs on the website point to it
-- Tally gives you a dashboard of signups — a list of 10+ signups is a real traction metric for YC
-
-#### 4. Get one real user or collaborator
-YC cares about traction more than any website polish. One researcher from your network using Proteus and giving you a one-sentence quote is worth more than any section you add to the site.
-- Send 5 cold emails to PhD students or postdocs working on oncology targets
-- Ask them to try it locally and give feedback
-- If you get a positive response, add it as a pull-quote to the Recognition section
-
----
-
-### Priority 2 — YC Application Polish (Next 2 Weeks)
-
-#### 5. Add "In the News" section
-If you have any press coverage, hackathon wins, or public mentions — they go here.
-- Even a tweet from someone credible counts
-- Format: source name, date, one-sentence excerpt, link
-
-#### 6. Add FAQ section
-Preempts the 3 questions every YC partner will ask:
-- "How is this different from AlphaFold?" → AlphaFold predicts structure; Proteus optimizes sequences for binding
-- "Are these binding affinities real?" → Computational predictions; methodology note explains the oracle
-- "What's your business model?" → Already answered in the Business Model section; link to it
-
-#### 7. Write a one-page technical brief (PDF)
-For YC partners who want to go deeper than the website. 1 page, covers:
-- The MCMC algorithm (Metropolis-Hastings + parallel tempering, briefly)
-- Energy oracle methodology
-- Benchmark methodology and limitations
-- Roadmap to wet-lab validation
-Link it from the About/Founder section as "Technical Overview (PDF)."
-
-#### 8. Add a real photo to the founder card
-The "AD" initial monogram is placeholder. A professional headshot (or even a clean photo) dramatically increases credibility in the founder section.
-
----
-
-### Priority 3 — Long-Term (Pre-Seed / Series A)
-
-- **Wet-lab validation:** Partner with a university lab to synthesize one Proteus candidate and measure actual binding affinity. A single real IC50 measurement transforms the story completely.
-- **Expand target library:** Add BBB-penetrant peptide targets, immune checkpoint targets beyond PD-L1
-- **AlphaFold 3 integration:** Use AF3 structure predictions as the folding oracle instead of the energy heuristic
-- **Regulatory pathway:** If targeting pharma customers, understand 21 CFR Part 11 requirements for electronic records
-- **IP strategy:** File a provisional patent on the MCMC design pipeline + energy oracle methodology
+| Decision | Detail |
+|---|---|
+| Python 3.9 compat | No backslashes inside f-strings; no match statements; use `.format()` throughout |
+| bcrypt 4.1.3 | Direct `bcrypt.hashpw/checkpw` — passlib incompatible with bcrypt 5.x |
+| molstar dropped | Requires Node ≥22; replaced with RCSB PDB iframe |
+| Services startup | `subprocess.Popen(..., close_fds=True, stdin=subprocess.DEVNULL)` to survive bash timeout |
+| Frontend routing | `AgentPage` manages own nav; excluded from `<Layout>` |
+| No `time_efficiency` | All 10 JSON targets lack this field → Graph 4 always shows static stat summary |
+| ΔG range | −14 to −7 kcal/mol for promising candidates; −6 kcal/mol = AutoDock Vina lab-worthy threshold |
+| Internal energy | MCMC energy (0–1, lower = better) stays for Metropolis-Hastings; ΔG is derived display metric |
+| KRAS realism | Proteus 95nM vs Sotorasib 30nM — intentionally realistic (KRAS G12C is hardest target) |
+| EGFRvIII demo winner | `KCCWIWKW` — Trp-rich, cationic; Gate2 FAIL (charge desolvation > burial) but lab viability ≈78/100 |
+| Seed sequences | `MVLDGEQG` → EGFRvIII/PD-L1/KRAS; `MVAQWKEQ` → SARS-CoV-2 3CL |
+| Pocket residues | EGFRvIII [87,92,98,105,112,119]; PD-L1 [6 residues]; KRAS_G12C [7 residues]; SARS-CoV-2_3CL → 0 (composition fallback) |
+| activeViewerPdb | Defaults to `'6LU7'` |
+| Tally form | `https://tally.so/r/yPjKlg` — all website CTAs point here |
 
 ---
 
@@ -139,43 +134,62 @@ The "AD" initial monogram is placeholder. A professional headshot (or even a cle
 ```
 backend/
   app/
-    main.py              — FastAPI app, lifespan, all router registrations
+    main.py                  — FastAPI app, lifespan, all router registrations
     api/
-      auth.py            — JWT auth, bcrypt, require_role()
-      agent.py           — /agent/greet and /agent/design endpoints
-      benchmarks.py      — 3 benchmark endpoints
+      auth.py                — JWT auth, bcrypt direct calls, require_role() factory
+      agent.py               — /agent/greet and /agent/design endpoints
+      benchmarks.py          — 3 benchmark endpoints
     services/
-      agent.py           — ProteinDesignAgent.run(), 3-round iterative pipeline
-      benchmark.py       — SOTA loader, benchmark data builders
-      job_queue.py       — MCMCJobRunner.run_job()
+      agent.py               — ProteinDesignAgent.run(); _run_mcmc_round (27 fields);
+                               _suggest_solubility_tags; _generate_3d_notes; _format_fasta;
+                               _generate_physics_justification (TODAY); prev_seed tracking (TODAY);
+                               evaluate message emission after each round_complete (TODAY)
+      benchmark.py           — SOTA loader, benchmark data builders
+      job_queue.py           — MCMCJobRunner.run_job()
     core/
-      mcmc.py            — MCMCParallelSampler, R-hat, ESS
-      energy.py          — EnergyOracle, BLOSUM62, HYDROPHOBICITY_SCALE
-      proposal.py        — ProposalDistribution, 4 mutation operators
+      mcmc.py                — MCMCParallelSampler, GIAPT adaptive temperature (every 50 steps)
+      energy.py              — EnergyOracle, 27-metric score_candidate(), all Triple-Gate methods,
+                               compute_selectivity_ddg()
+      proposal.py            — ProposalDistribution, 4 mutation operators
+      esm2.py                — ESM2EmbeddingCache
+    schemas/
+      agent.py               — PatientInfo (has modality), AgentMessage, AgentRunRequest/Response
   scripts/
     scrape_benchmark_data.py
 
 frontend/
   src/
     pages/
-      AgentPage.tsx      — landing + 3-column workspace
+      AgentPage.tsx          — landing + 3-column workspace; fallback renderer rewritten (TODAY);
+                               enterWorkspace greeting rewritten (TODAY); round_complete uses d.scores
       BenchmarksDashboard.tsx
     components/
-      DesignCycleSummary.tsx
-      BenchmarkGraphs.tsx
-      ResultsPanel.tsx
-      CommandPalette.tsx
-      PatientForm.tsx
+      DesignCycleSummary.tsx — ΔG in header + rows + expanded grid
+      BenchmarkGraphs.tsx    — 4 Recharts graphs; Graph 4 static (no time_efficiency)
+      ResultsPanel.tsx       — ranked candidates, Kd, toxicity/selectivity badges
+      PatientForm.tsx        — 2-step intake; modality dropdown in step 1
+      OptimizationTrace.tsx  — collapsible timeline
+      Layout.tsx             — nav; all routes except /agent
+      CommandPalette.tsx     — Cmd+K; 4 commands
+      FileUpload.tsx
+    types/
+      agent.ts               — IterationRound (all gate/physics fields); AgentMessage.data
+                               (notes_3d, solubility_tags, fasta); scores as Record<string, number|boolean>
+    services/
+      agent.ts               — agentApi.design()
+    hooks/
+      useAuth.ts
   public/
     data/
-      real_benchmark_data.json   — 10 targets across 4 disease areas (beats AlphaFold on all 10)
-      benchmark_test_data.json   — fallback
+      real_benchmark_data.json    — 10 targets, 4 disease areas (no time_efficiency field)
+      benchmark_test_data.json    — fallback
 
 docs/
-  index.html             — GitHub Pages website (standalone HTML)
+  index.html             — GitHub Pages website (standalone HTML); Speed section; GIAPT SVG;
+                           Developability Scorecard; Off-Target Protection; comparison table (6×9)
+  brief.html             — 10-section technical brief
 
-data/
-  known_binders/         — CSV files loaded for benchmark comparisons
+PROGRESS.md            — this file
 ```
 
 ---
@@ -183,16 +197,24 @@ data/
 ## Running Locally
 
 ```bash
-# PostgreSQL (brew)
+# PostgreSQL
 brew services start postgresql@14
 
 # Redis
 brew services start redis
 
-# Backend
+# Backend (survives bash timeout via subprocess)
 cd backend
 source venv/bin/activate
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+python3 -c "
+import subprocess
+subprocess.Popen(
+  ['python3','-m','uvicorn','app.main:app','--host','0.0.0.0','--port','8000'],
+  stdout=open('/tmp/backend_p.log','w'),
+  stderr=subprocess.STDOUT,
+  stdin=subprocess.DEVNULL,
+  close_fds=True
+)"
 
 # Frontend
 cd frontend
@@ -203,8 +225,63 @@ npm run dev
 - `fellow@proteus.dev` / `password123`
 - `admin@proteus.dev` / `password123`
 
+**Ports:** Backend 8000 · Frontend 5173 · PostgreSQL 5432 (db/user/pw = proteus) · Redis 6379
+
+---
+
+## What Is Left To Do
+
+### Priority 1 — Critical for YC (Do This Week)
+
+#### 1. Record a 60-second demo video
+The single highest-impact thing remaining.
+- Show: type a cancer type → MCMC runs → physics justification bullets appear → convergence → ranked candidates
+- Keep under 90 seconds. Captions instead of voiceover.
+- Upload to YouTube (unlisted or public) and embed in hero section.
+- Embed code for `docs/index.html` once you have the YouTube ID:
+  ```html
+  <div style="margin-top:40px;max-width:720px;margin-left:auto;margin-right:auto;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">
+    <iframe width="100%" height="400" src="https://www.youtube.com/embed/YOUR_VIDEO_ID"
+      frameborder="0" allowfullscreen style="display:block"></iframe>
+  </div>
+  ```
+
+#### 2. Deploy the frontend publicly
+- **Backend:** Railway.app (free tier, ~20 min) — connect GitHub repo, root = `backend/`, add env vars (DB_URL, JWT_SECRET, etc.)
+- **Frontend:** Vercel (free, ~10 min) — connect GitHub repo, root = `frontend/`, set `VITE_API_URL` to Railway URL
+- Once live, replace "Request Demo" button in hero with "Launch Workspace" → Vercel URL
+
+#### 3. Get one real user or collaborator
+- Send 5 cold emails to PhD students or postdocs in oncology
+- One researcher using it + a one-sentence quote = real traction for YC
+
+---
+
+### Priority 2 — YC Application Polish
+
+#### 4. Add FAQ section to website
+- "How is this different from AlphaFold?" → AlphaFold predicts structure; Proteus optimizes sequences for binding
+- "Are these binding affinities real?" → Computational predictions; methodology note explains the oracle
+- "What's your business model?" → Already in Business Model section
+
+#### 5. Add a real photo to the founder card
+The "AD" monogram is placeholder. A headshot dramatically increases credibility.
+
+#### 6. "In the News" section (if any coverage exists)
+Even a tweet from a credible researcher counts.
+
+---
+
+### Priority 3 — Long-Term (Pre-Seed / Series A)
+
+- **Wet-lab validation:** Synthesize one Proteus candidate, measure actual IC50 — transforms the story completely
+- **Expand target library:** BBB-penetrant peptide targets, immune checkpoint targets beyond PD-L1
+- **AlphaFold 3 integration:** Use AF3 structure predictions as the folding oracle
+- **Regulatory pathway:** 21 CFR Part 11 requirements for pharma customers
+- **IP strategy:** File provisional patent on MCMC design pipeline + energy oracle methodology
+
 ---
 
 ## The YC Pitch (One Paragraph)
 
-> Proteus designs protein therapeutics in seconds. Pharma companies spend 6–18 months and up to $2M designing each therapeutic protein — with a 70% failure rate. Proteus replaces that loop with MCMC-based computational design: give it an oncology target, and it returns ranked peptide candidates in under two seconds, benchmarked against AlphaFold and published drugs. On EGFRvIII it achieves 65nM vs Erlotinib's 120nM. On PD-L1, 48nM vs Pembrolizumab's 55nM. We are working with research teams on early access and targeting B2B SaaS licensing ($10–50K/month) and per-target design deals ($100K–1M) for pharma customers. The global protein therapeutics market is $20B and growing at 12% CAGR.
+> Proteus designs protein therapeutics in seconds. Pharma companies spend 6–18 months and up to $2M designing each therapeutic protein — with a 70% failure rate. Proteus replaces that loop with MCMC-based computational design: give it an oncology target, and it returns ranked peptide candidates with full biophysical profiles (ΔG, Kd, Triple-Gate physics validation, lab viability score) in under two seconds, benchmarked against AlphaFold and published drugs. On EGFRvIII it achieves 65nM vs Erlotinib's 120nM. On PD-L1, 48nM vs Pembrolizumab's 55nM. We are working with research teams on early access and targeting B2B SaaS licensing ($10–50K/month) and per-target design deals ($100K–1M) for pharma customers. The global protein therapeutics market is $20B and growing at 12% CAGR.

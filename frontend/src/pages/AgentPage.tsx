@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, FormEvent, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import type { PatientInfo, AgentMessage } from '../types/agent';
 import { agentApi } from '../services/agent';
+import { useAuth } from '../hooks/useAuth';
 import PatientForm from '../components/PatientForm';
 import FileUpload from '../components/FileUpload';
-import WidgetContainer from '../components/WidgetContainer';
-import ProgressWidget from '../components/ProgressWidget';
 import ResultsPanel from '../components/ResultsPanel';
 import DesignCycleSummary from '../components/DesignCycleSummary';
 import BenchmarkGraphs from '../components/BenchmarkGraphs';
 import CommandPalette, { useCommandPalette } from '../components/CommandPalette';
+import OptimizationTrace from '../components/OptimizationTrace';
 
 type Candidate = {
   rank: number; sequence: string; binding_score: number;
@@ -17,7 +18,338 @@ type Candidate = {
   serum_half_life_min?: number; selectivity_ratio?: number; toxicity_flag?: boolean;
 };
 
+// ── Simplified message renderer ──────────────────────────────────────────────
+function AgentMessageCard({ msg }: { msg: AgentMessage }) {
+  const d = msg.data;
+
+  // User bubble
+  if (msg.role === 'user') {
+    return (
+      <div className="bg-white/[0.06] rounded-lg px-3 py-2 text-xs text-white leading-relaxed">
+        {msg.content}
+      </div>
+    );
+  }
+
+  // Round complete — metric card
+  if (d?.status === 'round_complete') {
+    const scores = (d.scores || {}) as Record<string, any>;
+    const dg: number | null = scores.delta_g_binding_kcal_mol ?? null;
+    const kd = scores.kd_nM;
+    const gate1: boolean | undefined = scores.gate1_pass;
+    const gate2: boolean | undefined = scores.gate2_pass;
+    const gate3: boolean | undefined = scores.gate3_pass;
+    const lab: number | undefined = scores.lab_viability_score;
+    const seq: string = d.sequence || '';
+    const muts = (d.mutations || []).slice(0, 4);
+    const gateColor = (pass: boolean | undefined) =>
+      pass === true ? 'bg-green-500' : pass === false ? 'bg-red-500' : 'bg-gray-600';
+    return (
+      <div className="rounded-lg border border-[#222] bg-[#0a0a0a] overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
+          <span className="text-[9px] text-gray-500 uppercase tracking-wider font-medium">Round {d.round}</span>
+          <div className="flex items-center space-x-1.5">
+            {gate1 !== undefined && (
+              <span className="flex items-center space-x-0.5 text-[8px] text-gray-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${gateColor(gate1)}`} title="Gate 1: Enthalpic Locking (Sc)" />
+                <span className={gate1 ? 'text-green-500' : 'text-red-400'}>G1</span>
+              </span>
+            )}
+            {gate2 !== undefined && (
+              <span className="flex items-center space-x-0.5 text-[8px] text-gray-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${gateColor(gate2)}`} title="Gate 2: Solvation ΔG" />
+                <span className={gate2 ? 'text-green-500' : 'text-red-400'}>G2</span>
+              </span>
+            )}
+            {gate3 !== undefined && (
+              <span className="flex items-center space-x-0.5 text-[8px] text-gray-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${gateColor(gate3)}`} title="Gate 3: Entropic Penalty" />
+                <span className={gate3 ? 'text-green-500' : 'text-red-400'}>G3</span>
+              </span>
+            )}
+            {d.target && <span className="text-[9px] text-gray-600 font-mono ml-1">{d.target}</span>}
+          </div>
+        </div>
+        <div className="px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">ΔG Binding</span>
+            <span className="font-bold text-white font-mono">
+              {dg !== null ? dg.toFixed(2) + ' kcal/mol' : (scores.binding_score != null ? (scores.binding_score * 100).toFixed(1) + '%' : '—')}
+            </span>
+          </div>
+          {kd != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Kd</span>
+              <span className="font-bold text-white font-mono">
+                {kd < 1000 ? kd.toFixed(0) + ' nM' : (kd / 1000).toFixed(1) + ' μM'}
+              </span>
+            </div>
+          )}
+          {lab != null && (
+            <div className="flex items-center justify-between col-span-2">
+              <span className="text-gray-500">Lab viability</span>
+              <span className={`font-mono font-bold ${lab >= 70 ? 'text-green-400' : lab >= 50 ? 'text-yellow-500' : 'text-red-400'}`}>
+                {lab.toFixed(0)}/100
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Stability</span>
+            <span className="font-mono text-gray-300">{scores.stability != null ? (scores.stability * 100).toFixed(0) + '%' : '—'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Energy</span>
+            <span className="font-mono text-gray-300">{scores.energy != null ? scores.energy.toFixed(3) : '—'}</span>
+          </div>
+          {scores.selectivity_ratio != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Select.</span>
+              <span className={`font-mono ${scores.toxicity_flag ? 'text-red-400' : scores.selectivity_ratio >= 5 ? 'text-green-400' : 'text-yellow-500'}`}>
+                {(scores.selectivity_ratio as number).toFixed(1)}x
+              </span>
+            </div>
+          )}
+          {scores.serum_half_life_min != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">t½</span>
+              <span className="font-mono text-gray-300">{(scores.serum_half_life_min as number).toFixed(0)} min</span>
+            </div>
+          )}
+        </div>
+        {seq && (
+          <div className="px-3 pb-1.5">
+            <span className="font-mono text-[9px] text-gray-500 tracking-wider">{seq}</span>
+          </div>
+        )}
+        {muts.length > 0 && (
+          <div className="px-3 pb-2 flex flex-wrap gap-1">
+            {muts.map((m: any, i: number) => (
+              <span key={i} className="text-[8px] font-mono bg-red-900/30 text-red-300 px-1 py-0.5 rounded">
+                {m.from}{m.position}{m.to}
+              </span>
+            ))}
+            {(d.mutations || []).length > 4 && (
+              <span className="text-[8px] text-gray-600">+{(d.mutations || []).length - 4}</span>
+            )}
+          </div>
+        )}
+        {d.trace && d.trace.length > 0 && (
+          <div className="px-2 pb-2">
+            <OptimizationTrace trace={d.trace} round={d.round} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Design complete — summary card
+  if (d?.status === 'complete' && d.rounds && d.rounds.length > 0) {
+    const best = [...d.rounds].sort((a: any, b: any) => b.binding_score - a.binding_score)[0] as any;
+    const totalRounds = d.rounds.length;
+    const kd = best.kd_nM;
+    const dg: number | null = best.delta_g_binding_kcal_mol ?? null;
+    const gate1: boolean | undefined = best.gate1_pass;
+    const gate2: boolean | undefined = best.gate2_pass;
+    const gate3: boolean | undefined = best.gate3_pass;
+    const lab: number | undefined = best.lab_viability_score;
+    const gateColor = (pass: boolean | undefined) =>
+      pass === true ? 'bg-green-500' : pass === false ? 'bg-red-500' : 'bg-gray-600';
+    const gateLabel = (name: string, pass: boolean | undefined) =>
+      pass === true ? name + ' PASS' : pass === false ? name + ' FAIL' : name;
+    const notes3d: string[] = (d as any).notes_3d || [];
+    const solTags: string[] = (d as any).solubility_tags || [];
+    return (
+      <div className="rounded-lg border border-green-900/40 bg-green-950/10 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-green-900/20">
+          <span className="text-[9px] text-green-500 uppercase tracking-wider font-medium">Design Complete</span>
+          <span className="text-[9px] text-gray-600">{totalRounds} rounds · {d.total_time?.toFixed(1)}s</span>
+        </div>
+        {/* Gate indicators row */}
+        {(gate1 !== undefined || gate2 !== undefined || gate3 !== undefined) && (
+          <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center space-x-3 text-[9px]">
+            <span className="text-gray-600 uppercase tracking-wider">Triple-Gate:</span>
+            {gate1 !== undefined && (
+              <span className="flex items-center space-x-1">
+                <span className={`w-2 h-2 rounded-full ${gateColor(gate1)}`} />
+                <span className={gate1 ? 'text-green-400' : 'text-red-400'}>{gateLabel('G1', gate1)}</span>
+              </span>
+            )}
+            {gate2 !== undefined && (
+              <span className="flex items-center space-x-1">
+                <span className={`w-2 h-2 rounded-full ${gateColor(gate2)}`} />
+                <span className={gate2 ? 'text-green-400' : 'text-red-400'}>{gateLabel('G2', gate2)}</span>
+              </span>
+            )}
+            {gate3 !== undefined && (
+              <span className="flex items-center space-x-1">
+                <span className={`w-2 h-2 rounded-full ${gateColor(gate3)}`} />
+                <span className={gate3 ? 'text-green-400' : 'text-red-400'}>{gateLabel('G3', gate3)}</span>
+              </span>
+            )}
+          </div>
+        )}
+        <div className="px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+          <div className="flex items-center justify-between col-span-2">
+            <span className="text-gray-500">Best sequence</span>
+            <span className="font-mono text-[9px] text-white">{best.sequence}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">ΔG Binding</span>
+            <span className="font-bold text-green-400 font-mono">
+              {dg !== null ? dg.toFixed(2) + ' kcal/mol' : (best.binding_score * 100).toFixed(1) + '%'}
+            </span>
+          </div>
+          {kd != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Kd</span>
+              <span className="font-bold text-green-400 font-mono">
+                {kd < 1000 ? kd.toFixed(0) + ' nM' : (kd / 1000).toFixed(1) + ' μM'}
+              </span>
+            </div>
+          )}
+          {lab != null && (
+            <div className="flex items-center justify-between col-span-2">
+              <span className="text-gray-500">Lab viability</span>
+              <span className={`font-mono font-bold ${lab >= 70 ? 'text-green-400' : lab >= 50 ? 'text-yellow-500' : 'text-red-400'}`}>
+                {lab.toFixed(0)}/100
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Stability</span>
+            <span className="font-mono text-gray-300">{(best.stability_score * 100).toFixed(0)}%</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">Energy</span>
+            <span className="font-mono text-gray-300">{best.total_energy?.toFixed(3) ?? '—'}</span>
+          </div>
+          {best.selectivity_ratio != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Select.</span>
+              <span className={`font-mono ${best.toxicity_flag ? 'text-red-400' : best.selectivity_ratio >= 5 ? 'text-green-400' : 'text-yellow-500'}`}>
+                {best.selectivity_ratio.toFixed(1)}x
+              </span>
+            </div>
+          )}
+          {best.serum_half_life_min != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">t½</span>
+              <span className="font-mono text-gray-300">{best.serum_half_life_min.toFixed(0)} min</span>
+            </div>
+          )}
+        </div>
+        {/* Solubility tags */}
+        {solTags.length > 0 && (
+          <div className="px-3 pb-2 flex flex-wrap gap-1">
+            {solTags.map((tag: string, i: number) => (
+              <span key={i} className="text-[8px] bg-yellow-900/30 text-yellow-400 border border-yellow-900/40 px-1.5 py-0.5 rounded leading-tight">
+                {tag.split(' — ')[0]}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* 3D inspection notes */}
+        {notes3d.length > 0 && (
+          <div className="px-3 pb-2 border-t border-[#1a1a1a] pt-2">
+            <div className="text-[8px] text-gray-600 uppercase tracking-wider mb-1">3D Viewer Notes</div>
+            <div className="space-y-1">
+              {notes3d.map((note: string, i: number) => (
+                <div key={i} className="text-[8px] text-gray-500 leading-relaxed">
+                  {note}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {d.trace && d.trace.length > 0 && (
+          <div className="px-2 pb-2">
+            <OptimizationTrace trace={d.trace} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Running / phase indicator
+  if (d?.status === 'running') {
+    const phaseLabel: Record<string, string> = {
+      research: 'Researching target',
+      generate: 'Generating candidates',
+      fold: 'Folding structure',
+      evaluate: 'Evaluating metrics',
+    };
+    return (
+      <div className="flex items-center space-x-2 text-[10px] text-gray-500 py-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+        <span>{d.phase ? phaseLabel[d.phase] || d.phase : 'Running MCMC...'}</span>
+      </div>
+    );
+  }
+
+  // Error
+  if (d?.status === 'error') {
+    return (
+      <div className="text-[10px] text-red-400 bg-red-900/10 border border-red-900/30 rounded-lg px-3 py-2">
+        {msg.content.replace(/^Error:\s*/i, '')}
+      </div>
+    );
+  }
+
+  // Fallback — full-content renderer: per-line bullet/header formatting
+  const allLines = msg.content.split('\n');
+  return (
+    <div className="text-[10px] leading-relaxed space-y-0.5">
+      <div className="flex items-center space-x-1 mb-1">
+        <span className="text-[8px] text-gray-600 uppercase tracking-wider">Proteus</span>
+      </div>
+      {allLines.map((line, i) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={i} className="h-1" />;
+        // Separator lines (=== or ---)
+        if (/^[=]{3,}$/.test(trimmed) || /^[-]{3,}$/.test(trimmed)) {
+          return <div key={i} className="border-t border-[#1e1e1e] my-0.5" />;
+        }
+        // Markdown heading (### or ##)
+        if (/^#{2,}\s/.test(trimmed)) {
+          return <div key={i} className="text-gray-300 font-medium mt-1">{trimmed.replace(/^#+\s*/, '')}</div>;
+        }
+        // Code fence (```) — skip the fence line itself
+        if (trimmed === '```' || trimmed.startsWith('```')) {
+          return <div key={i} className="text-gray-600 text-[8px] font-mono">{trimmed.startsWith('```') && trimmed.length > 3 ? trimmed.slice(3) : ''}</div>;
+        }
+        // Table row (|...|)
+        if (trimmed.startsWith('|')) {
+          return <div key={i} className="font-mono text-gray-600 text-[8px] overflow-x-auto whitespace-nowrap">{trimmed}</div>;
+        }
+        // Bullet line (- ...)
+        if (trimmed.startsWith('- ')) {
+          const content = trimmed.slice(2).replace(/\*\*/g, '');
+          return (
+            <div key={i} className="flex space-x-1.5 text-gray-400">
+              <span className="text-gray-600 flex-shrink-0 mt-px">·</span>
+              <span>{content}</span>
+            </div>
+          );
+        }
+        // Header line: fully wrapped in ** (e.g. **Title**)
+        if (trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length > 4) {
+          return <div key={i} className="text-gray-300 font-medium mt-1">{trimmed.replace(/\*\*/g, '')}</div>;
+        }
+        // Partial bold: contains ** somewhere
+        if (trimmed.includes('**')) {
+          return <div key={i} className="text-gray-300">{trimmed.replace(/\*\*/g, '')}</div>;
+        }
+        // Plain text
+        return <div key={i} className="text-gray-500">{trimmed}</div>;
+      })}
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function AgentPage() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'landing' | 'workspace'>('landing');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState('');
@@ -29,28 +361,61 @@ export default function AgentPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [seed, setSeed] = useState<string | undefined>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(300);
   const [activeViewerPdb, setActiveViewerPdb] = useState<string>('6LU7');
   const [activeViewerMuts, setActiveViewerMuts] = useState<any[]>([]);
-  const [showPatientForm, setShowPatientForm] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
   const [hoveredTarget, setHoveredTarget] = useState<number | null>(null);
   const [designRounds, setDesignRounds] = useState<any[]>([]);
   const [designTime, setDesignTime] = useState(0);
   const [designTarget, setDesignTarget] = useState('');
   const [comparisonMode, setComparisonMode] = useState(false);
-  const [compareRun, setCompareRun] = useState<any>(null);
 
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(300);
   const chatEnd = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { isOpen: paletteOpen, setIsOpen: setPaletteOpen } = useCommandPalette();
 
+  const handleLogout = () => { logout(); navigate('/login'); };
+
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // Drag-to-resize sidebar
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = e.clientX - dragStartX.current;
+      setSidebarWidth(Math.min(640, Math.max(200, dragStartWidth.current + delta)));
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
   const enterWorkspace = useCallback((info: PatientInfo) => {
-    setError(null); setPatient(info); setMode('workspace'); setShowPatientForm(false);
+    setError(null); setPatient(info); setMode('workspace');
+    const parts: string[] = ['- Condition: ' + info.cancer_type];
+    if (info.cancer_stage) parts.push('- Stage: ' + info.cancer_stage);
+    if (info.tumor_markers) parts.push('- Markers: ' + info.tumor_markers);
+    if (info.previous_treatments) parts.push('- Prior treatments: ' + info.previous_treatments);
+    if (info.modality) parts.push('- Modality: ' + info.modality);
     setMessages([{
       role: 'agent',
-      content: `Clinical intake recorded.\n\n**Patient:** ${info.full_name || 'Unnamed'}, ${info.age || '—'} years\n**Condition:** ${info.cancer_type}\n${info.tumor_markers ? `**Markers:** ${info.tumor_markers}\n` : ''}${info.previous_treatments ? `**Prior treatment:** ${info.previous_treatments}\n` : ''}${info.brain_metastasis ? '**CNS involvement:** Yes\n' : ''}\nReady to design. What should I target?`,
+      content: 'Ready\n' + parts.join('\n'),
     }]);
     setTimeout(() => inputRef.current?.focus(), 300);
   }, []);
@@ -138,18 +503,35 @@ export default function AgentPage() {
     { id: 'compare', label: 'Toggle comparison mode', category: 'View', action: () => setComparisonMode((p) => !p) },
     { id: 'export-all', label: 'Export all candidates as FASTA', category: 'Export', action: () => candidates.forEach((c) => handleExport(c.sequence, 'fasta')) },
     { id: 'toggle-sidebar', label: 'Toggle chat sidebar', category: 'View', action: () => setSidebarOpen((p) => !p) },
-    { id: 'upload', label: 'Upload PDB / sequence', category: 'File', action: () => setShowUpload((p) => !p) },
   ];
 
   if (mode === 'landing') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-black">
+      <div className="min-h-screen flex flex-col bg-black text-white">
+        {/* Top nav for landing mode */}
+        <nav className="border-b border-[#1a1a1a] flex-shrink-0">
+          <div className="max-w-5xl mx-auto px-4 h-12 flex items-center justify-between">
+            <div className="flex items-center space-x-5">
+              <span className="text-sm font-bold tracking-tight">Proteus</span>
+              <div className="flex items-center space-x-1">
+                <Link to="/agent" className="px-3 py-1.5 rounded text-[11px] font-medium bg-white/10 text-white">Workspace</Link>
+                <Link to="/benchmarks" className="px-3 py-1.5 rounded text-[11px] font-medium text-gray-500 hover:text-white hover:bg-white/5 transition-colors">Benchmarks</Link>
+                <Link to="/dashboard" className="px-3 py-1.5 rounded text-[11px] font-medium text-gray-500 hover:text-white hover:bg-white/5 transition-colors">History</Link>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <Link to="/profile" className="text-[11px] text-gray-500 hover:text-white transition-colors">{user?.full_name}</Link>
+              <button onClick={handleLogout} className="text-[11px] text-gray-600 hover:text-white transition-colors">Logout</button>
+            </div>
+          </div>
+        </nav>
+        <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-3xl space-y-6 animate-fade-in">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4">
               <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
                 <defs><linearGradient id="dl" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stop-color="#fff"/><stop offset="50%" stop-color="#666"/><stop offset="100%" stop-color="#fff"/>
+                  <stop offset="0%" stopColor="#fff"/><stop offset="50%" stopColor="#666"/><stop offset="100%" stopColor="#fff"/>
                 </linearGradient></defs>
                 <g stroke="url(#dl)" strokeWidth="2.5" strokeLinecap="round" fill="none">
                   <path d="M30 15 Q50 25 70 15 Q50 5 30 15" opacity=".9"/>
@@ -188,7 +570,7 @@ export default function AgentPage() {
                   onSequenceInput={(seq) => enterWorkspace({
                     full_name: 'Researcher', age: 0, cancer_type: 'Custom sequence uploaded',
                     cancer_stage: '', tumor_markers: '', previous_treatments: '',
-                    brain_metastasis: false, notes: `Custom seed: ${seq}`,
+                    brain_metastasis: false, notes: `Custom seed: ${seq}`, modality: '',
                   })}
                 />
               </div>
@@ -205,7 +587,7 @@ export default function AgentPage() {
                     <button key={t.name}
                       onMouseEnter={() => setHoveredTarget(idx)}
                       onMouseLeave={() => setHoveredTarget(null)}
-                      onClick={() => enterWorkspace({ full_name: 'Demo', age: 55, cancer_type: t.name, cancer_stage: 'IV', tumor_markers: t.name, previous_treatments: '', brain_metastasis: false, notes: '' })}
+                      onClick={() => enterWorkspace({ full_name: 'Demo', age: 55, cancer_type: t.name, cancer_stage: 'IV', tumor_markers: t.name, previous_treatments: '', brain_metastasis: false, notes: '', modality: '' })}
                       className={`group w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${hoveredTarget === idx ? 'border-white/30 bg-white/[0.03] translate-x-0.5' : 'border-[#222]'}`}>
                       <div>
                         <div className="font-medium text-white text-[12px]">{t.name}</div>
@@ -230,6 +612,7 @@ export default function AgentPage() {
 
           <p className="text-center text-[10px] text-gray-600">FOR RESEARCH USE ONLY. Not a medical device.</p>
         </div>
+        </div>
       </div>
     );
   }
@@ -244,7 +627,7 @@ export default function AgentPage() {
             aria-label="Toggle sidebar">☰</button>
           <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
             <defs><linearGradient id="nl" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#fff"/><stop offset="50%" stop-color="#666"/><stop offset="100%" stop-color="#fff"/>
+              <stop offset="0%" stopColor="#fff"/><stop offset="50%" stopColor="#666"/><stop offset="100%" stopColor="#fff"/>
             </linearGradient></defs>
             <g stroke="url(#nl)" strokeWidth="2.5" strokeLinecap="round" fill="none">
               <path d="M30 15 Q50 25 70 15 Q50 5 30 15" opacity=".9"/>
@@ -275,8 +658,6 @@ export default function AgentPage() {
             className={`text-[10px] px-2 py-1 rounded border transition-all ${
               comparisonMode ? 'border-white/40 bg-white/10 text-white' : 'border-[#222] text-gray-500 hover:text-white hover:border-[#444]'
             }`}>⇄ Compare</button>
-          <button onClick={() => setShowUpload((p) => !p)}
-            className="text-[10px] px-2 py-1 rounded border border-[#222] text-gray-500 hover:text-white hover:border-[#444] transition-all">Upload</button>
           <button onClick={() => setMode('landing')}
             className="text-[10px] text-gray-600 hover:text-white transition-colors">Exit</button>
         </div>
@@ -284,56 +665,49 @@ export default function AgentPage() {
 
       {/* Main 3-column layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Chat sidebar */}
+        {/* Left: Chat sidebar — resizable */}
         {sidebarOpen && (
-          <aside className="w-[280px] flex-shrink-0 border-r border-[#1a1a1a] flex flex-col bg-[#050505]">
-            <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              {designRounds.length > 0 && (
-                <div className="mb-3">
-                  <DesignCycleSummary rounds={designRounds} totalTime={designTime} targetName={designTarget} />
-                </div>
-              )}
-              {messages.length === 0 && (
-                <div className="text-center py-16 text-gray-600">
-                  <p className="text-xs">Ready to design</p>
-                  <div className="flex flex-col gap-1.5 mt-4">
-                    {['Design a peptide', 'Explain the process', 'What target?'].map((a) => (
-                      <button key={a} onClick={() => { setInput(a); setTimeout(() => inputRef.current?.focus(), 50); }}
-                        className="text-[10px] border border-[#222] hover:border-white/30 text-gray-400 hover:text-white px-3 py-1.5 rounded-full transition-all">
-                        {a}
-                      </button>
-                    ))}
+          <>
+            <aside style={{ width: sidebarWidth }} className="flex-shrink-0 border-r border-[#1a1a1a] flex flex-col bg-[#050505]">
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {designRounds.length > 0 && (
+                  <div className="mb-3">
+                    <DesignCycleSummary rounds={designRounds} totalTime={designTime} targetName={designTarget} />
                   </div>
-                </div>
-              )}
-              {messages.map((msg, i) => (
-                <div key={i} className={`text-xs leading-relaxed ${msg.role === 'user' ? 'text-white bg-white/5 rounded-lg px-3 py-2' : 'text-gray-300'}`}>
-                  {msg.role === 'agent' && (
-                    <div className="flex items-center space-x-1 mb-1">
-                      <svg viewBox="0 0 100 100" fill="none" className="w-3 h-3">
-                        <g stroke="#666" strokeWidth="3" strokeLinecap="round" fill="none">
-                          <path d="M30 15 Q50 25 70 15" opacity=".9"/>
-                          <line x1="30" y1="15" x2="30" y2="35" opacity=".6"/>
-                          <line x1="70" y1="15" x2="70" y2="35" opacity=".6"/>
-                        </g>
-                      </svg>
-                      <span className="text-[9px] text-gray-600 uppercase tracking-wider">Proteus</span>
+                )}
+                {messages.length === 0 && (
+                  <div className="text-center py-16 text-gray-600">
+                    <p className="text-xs">Ready to design</p>
+                    <div className="flex flex-col gap-1.5 mt-4">
+                      {['Design a peptide', 'Explain the process', 'What target?'].map((a) => (
+                        <button key={a} onClick={() => { setInput(a); setTimeout(() => inputRef.current?.focus(), 50); }}
+                          className="text-[10px] border border-[#222] hover:border-white/30 text-gray-400 hover:text-white px-3 py-1.5 rounded-full transition-all">
+                          {a}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  <div className="whitespace-pre-wrap break-words">{msg.content.length > 400 ? msg.content.slice(0, 400) + '...' : msg.content}</div>
-                </div>
-              ))}
-              <div ref={chatEnd} />
-            </div>
-            <div className="p-3 border-t border-[#1a1a1a]">
-              <form onSubmit={handleSend} className="flex space-x-1.5">
-                <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-                  placeholder="Message..." className="flex-1 bg-[#111] border border-[#222] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#444]" disabled={loading} />
-                <button type="submit" disabled={loading || !input.trim()}
-                  className="px-3 py-1.5 bg-white text-black rounded-lg text-[10px] font-medium disabled:opacity-30">→</button>
-              </form>
-            </div>
-          </aside>
+                  </div>
+                )}
+                {messages.map((msg, i) => (
+                  <AgentMessageCard key={i} msg={msg} />
+                ))}
+                <div ref={chatEnd} />
+              </div>
+              <div className="p-3 border-t border-[#1a1a1a]">
+                <form onSubmit={handleSend} className="flex space-x-1.5">
+                  <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)}
+                    placeholder="Message..." className="flex-1 bg-[#111] border border-[#222] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#444]" disabled={loading} />
+                  <button type="submit" disabled={loading || !input.trim()}
+                    className="px-3 py-1.5 bg-white text-black rounded-lg text-[10px] font-medium disabled:opacity-30">→</button>
+                </form>
+              </div>
+            </aside>
+            {/* Drag-to-resize handle */}
+            <div
+              onMouseDown={onDragStart}
+              className="w-1 flex-shrink-0 cursor-col-resize hover:bg-white/20 transition-colors bg-transparent"
+            />
+          </>
         )}
 
         {/* Center: 3D Viewer */}
@@ -392,13 +766,6 @@ export default function AgentPage() {
               </div>
             </div>
           </div>
-
-          {/* Progress bar below viewer */}
-          {isRunning && currentRunId && (
-            <div className="h-20 border-t border-[#1a1a1a] p-2">
-              <ProgressWidget runId={currentRunId} isRunning={isRunning} />
-            </div>
-          )}
         </main>
 
         {/* Right: Results panel */}

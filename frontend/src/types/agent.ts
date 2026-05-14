@@ -1,3 +1,13 @@
+export interface TraceStep {
+  step: number
+  position: number
+  from: string
+  to: string
+  delta_energy: number
+  temperature: number
+  narrative: string
+}
+
 export interface PatientInfo {
   full_name: string
   age: number
@@ -7,6 +17,7 @@ export interface PatientInfo {
   previous_treatments: string
   brain_metastasis: boolean
   notes: string
+  modality: string
 }
 
 export interface AgentMessage {
@@ -22,11 +33,15 @@ export interface AgentMessage {
     seed?: string
     pdb_id?: string
     mutations?: { position: number; from: string; to: string }[]
-    scores?: Record<string, number>
+    scores?: Record<string, number | boolean>
     fold?: { plddt: number; ptm: number; predicted_aligned_error: number }
     is_best?: boolean
     rounds?: IterationRound[]
     total_time?: number
+    trace?: TraceStep[]
+    notes_3d?: string[]
+    solubility_tags?: string[]
+    fasta?: string
   }
 }
 
@@ -38,6 +53,20 @@ export interface IterationRound {
   solubility_score: number
   total_energy: number
   fold_plddt?: number
+  kd_nM?: number
+  serum_half_life_min?: number
+  selectivity_ratio?: number
+  toxicity_flag?: boolean
+  delta_g_binding_kcal_mol?: number
+  // Triple-Gate Physics Model
+  gate1_pass?: boolean
+  gate2_pass?: boolean
+  gate3_pass?: boolean
+  surface_complementarity?: number
+  solvation_delta_g?: number
+  entropic_penalty?: number
+  lab_viability_score?: number
+  hbond_count?: number
   is_best: boolean
 }
 
