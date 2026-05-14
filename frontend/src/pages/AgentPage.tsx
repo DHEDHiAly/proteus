@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, FormEvent, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { PatientInfo, AgentMessage } from '../types/agent';
+import type { PatientInfo, AgentMessage, DesignSessionContext } from '../types/agent';
 import { agentApi } from '../services/agent';
 import { useAuth } from '../hooks/useAuth';
 import PatientForm from '../components/PatientForm';
@@ -18,10 +18,16 @@ import type { SavedDesign } from '../services/savedDesigns';
 // Everything else — design requests, synonyms, typos, ambiguous phrasing — is
 // sent to the API so the real agent handles it.
 const QA_PAIRS: [RegExp, string][] = [
+  [/how\s+does\s+(this|the|your|that)\s+treatment\s+work|how\s+does\s+treatment\s+work|treatment\s+work\??|what\s+is\s+(this|the)\s+treatment|clinical\s+treatment\s+plan|how\s+would\s+treatment\s+(work|go)|mechanism\s+of\s+(the\s+)?treatment/i,
+    "**What “treatment” means in Proteus**\n\nProteus does **not** prescribe real-world therapy. It proposes **in-silico** peptide sequences and scores for **research only**.\n\n**Molecule intent:** sequences target the protein in the viewer; wet-lab validation is required.\n\n**Patient care:** only clinicians can plan real treatment.\n\nTo run another design pass, say **design a peptide** or **optimise for solubility**."],
   [/what\s+(can|does|is|do)\s+(you|it|this|proteus)\b|what\s+do\s+you\s+do|how\s+to\s+use|tell\s+me\s+about\s+(yourself|proteus|this)/i,
     "**What Proteus Does**\n\nGiven patient clinical information, Proteus:\n- Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n- Runs 3 rounds of MCMC design across parallel temperature chains\n- Scores each candidate on 8+ biophysical objectives (ΔG, Kd, stability, solubility, selectivity, immunogenicity, aggregation, half-life)\n- Returns the best sequence with full mutation rationale and Triple-Gate physics checks\n\nTo start a design run, say something like 'design a peptide' or 'optimize for high solubility'."],
   [/delta\s*g|binding\s+free\s+energ|\bdg\b.*binding/i,
     "**ΔG Binding** — Gibbs free energy of binding (kcal/mol). More negative = stronger:\n- < −9: strong  ·  −7 to −9: good  ·  −6 to −7: promising  ·  > −6: weak\nCalculated as ΔG = RT·ln(Kd) at body temperature (310 K)."],
+  [/how\s+does\s+(it|this|the\s+platform|the\s+system|everything)\s+work/i,
+    "**How Proteus works**\n\n1. Clinical context → resolved target (built-in or custom PDB).\n2. Several MCMC rounds (Metropolis–Hastings + parallel tempering) mutate the sequence.\n3. A composite oracle scores binding proxy, stability, solubility, charge, aggregation, etc.\n4. You get ranked sequences, mutations, and a 3D viewer — not a clinical plan.\n\n**Note:** in-silico scores are hypotheses until validated (e.g. SPR/ITC). Many docking workflows treat ~−6 kcal/mol or better as worth ordering for follow-up."],
+  [/results?\s+(of|from|for)|all\s+of\s+the\s+modell|modelling\s+results|what\s+are\s+the\s+results/i,
+    "**Where to read results**\n\n- **Left chat:** each round’s metrics and best sequence.\n- **Right:** candidate list sorted by binding proxy.\n- **Center:** structure with pocket mutations.\n\n**Treatment:** Proteus does not prescribe therapy — research use only. For a new optimisation, say *design a peptide* or *optimise for solubility*."],
   [/\bkd\b|dissociation\s+constant|binding\s+affinity/i,
     "**Kd (Dissociation Constant)** — lower = tighter binding:\n- < 1 nM: ultra-high  ·  1–10 nM: drug-like  ·  10–100 nM: high  ·  > 1 μM: weak\nProteus estimates Kd from ΔG = RT·ln(Kd) via the multi-objective energy oracle."],
   [/\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+(proteus|mcmc)\s+work/i,
@@ -62,6 +68,7 @@ type Candidate = {
   rank: number; sequence: string; binding_score: number;
   stability_score: number; solubility_score: number; total_energy?: number;
   num_mutations_from_seed?: number; kd_nM?: number;
+  delta_g_binding_kcal_mol?: number;
   serum_half_life_min?: number; selectivity_ratio?: number; toxicity_flag?: boolean;
 };
 
@@ -433,6 +440,7 @@ export default function AgentPage() {
   const [designTarget, setDesignTarget] = useState('');
   const [comparisonMode, setComparisonMode] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
+  const [designSession, setDesignSession] = useState<DesignSessionContext | undefined>();
 
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -504,7 +512,7 @@ export default function AgentPage() {
     setIsRunning(true);
 
     try {
-      const res = await agentApi.design(patient, userMessage);
+      const res = await agentApi.design(patient, userMessage, designSession);
       // Only append agent messages — the user message was already added optimistically
       // above, and the backend echoes it back as messages[0] which would cause a duplicate.
       // Also preserves full conversation history across turns.
@@ -536,6 +544,24 @@ export default function AgentPage() {
         setDesignRounds(roundData);
         setDesignTime(totalTime);
         setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+
+        // Update session context so follow-up chat has the current peptide metrics
+        if (lastComplete?.data?.rounds?.length) {
+          const best = [...lastComplete.data.rounds].sort((a: any, b: any) => b.binding_score - a.binding_score)[0] as any;
+          setDesignSession({
+            target_name: lastComplete.data.target || patient?.tumor_markers || patient?.cancer_type,
+            pdb_id: lastComplete.data.pdb_id,
+            best_sequence: best?.sequence,
+            seed_sequence: lastComplete.data.seed,
+            binding_score: best?.binding_score,
+            delta_g_kcal_mol: best?.delta_g_binding_kcal_mol,
+            kd_nM: best?.kd_nM,
+            stability_score: best?.stability_score,
+            solubility_score: best?.solubility_score,
+            total_energy: best?.total_energy,
+            lab_viability_score: best?.lab_viability_score,
+          });
+        }
       }
 
       if (res.data.candidate_sequence) {
@@ -547,7 +573,8 @@ export default function AgentPage() {
               rank: i + 1, sequence: r.sequence || '',
               binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
               solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
-              kd_nM: r.kd_nM, serum_half_life_min: r.serum_half_life_min,
+              kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+              serum_half_life_min: r.serum_half_life_min,
               selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
             })) as Candidate[]);
           return ranked.length > 0 ? ranked : prev;
@@ -785,6 +812,13 @@ export default function AgentPage() {
             className="text-[10px] text-gray-600 hover:text-white transition-colors">Exit</button>
         </div>
       </nav>
+
+      <div className="flex-shrink-0 border-b border-[#1a1a1a] bg-[#080808] px-3 py-1 text-center">
+        <p className="text-[9px] text-gray-600 leading-snug">
+          Research use only — sequences are computational hypotheses, not prescriptions.
+          Ask questions in plain English; say <span className="text-gray-500">design a peptide</span> to run a new MCMC cycle.
+        </p>
+      </div>
 
       {/* Main 3-column layout */}
       <div className="flex-1 flex overflow-hidden">

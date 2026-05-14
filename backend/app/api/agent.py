@@ -59,7 +59,7 @@ async def design(
     )
 
     try:
-        result = agent.run(request.patient, request.message)
+        result = agent.run(request.patient, request.message, request.session)
         await audit.log(
             user_id=current_user.id,
             user_email=current_user.email,

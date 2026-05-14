@@ -12,8 +12,14 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User, Role
 from app.schemas.user import (
-    UserCreate, UserLogin, UserResponse, TokenResponse,
-    PasswordResetRequest, PasswordReset, UserUpdate,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    TokenResponse,
+    RefreshTokenRequest,
+    PasswordResetRequest,
+    PasswordReset,
+    UserUpdate,
 )
 from app.services.audit import AuditService
 
@@ -177,9 +183,10 @@ async def update_me(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
-    refresh_token_str: str,
+    body: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    refresh_token_str = body.refresh_token
     try:
         payload = jwt.decode(refresh_token_str, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")

@@ -12,7 +12,7 @@ from app.core.mcmc import MCMCParallelSampler
 from app.core.energy import EnergyOracle
 from app.core.proposal import ProposalDistribution
 from app.core.esm2 import ESM2EmbeddingCache
-from app.schemas.agent import PatientInfo, AgentMessage, AgentRunResponse
+from app.schemas.agent import PatientInfo, AgentMessage, AgentRunResponse, DesignSessionContext
 from app.api.targets import load_targets_metadata
 
 logger = logging.getLogger(__name__)
@@ -448,8 +448,32 @@ _DESIGN_TRIGGERS = [
     r'\bnew\s+candidate\b|\bnew\s+sequence\b',
 ]
 
+# Question marks: ASCII ? plus common Unicode variants (UI / mobile keyboards).
+_QUESTION_MARK_RE = re.compile(r"[\?\uFF1F\uFE16\u2047\u061F]")
+
 # Knowledge base: (pattern, answer)
 _QA_PAIRS = [
+    (
+        r"bining\s+score|binding\s+score.*kcal|kcal.*binding\s+score|what.*\bbinding\s+score\b|"
+        r"which\s+.*\bscore\b.*kcal|explain.*binding.*percent",
+        "**Binding % vs ΔG (kcal/mol) vs Energy (E)**\n\n"
+        "- **Binding %** (or 0–1 proxy): the oracle’s **relative** on-target binding ranking — useful for comparing candidates from the same run.\n"
+        "- **ΔG (kcal/mol)**: **modelled** from the estimated Kd at 310 K (ΔG ≈ 0.616 × ln(Kd [M])). More negative usually means tighter in this heuristic; many docking workflows use **≈ −6 kcal/mol** as a rough “worth ordering” screening line — still validate experimentally.\n"
+        "- **E**: the **composite MCMC objective** (binding + stability + solubility + penalties). **Lower E is better in the search**, but E is **not** the same number as ΔG from a wet-lab assay.\n\n"
+        "If ΔG shows as “—” in an old build, refresh the app; the API always sends modelled ΔG alongside the proxy.",
+    ),
+    (
+        r"how\s+does\s+(this|the|your|that)\s+treatment\s+work|how\s+does\s+treatment\s+work|"
+        r"treatment\s+work\??|what\s+is\s+(this|the)\s+treatment|clinical\s+treatment\s+plan|"
+        r"how\s+would\s+treatment\s+(work|go)|mechanism\s+of\s+(the\s+)?treatment",
+        "**What “treatment” means in Proteus**\n\n"
+        "Proteus does **not** prescribe real-world therapy. It proposes **in-silico peptide sequences** and scores "
+        "(binding proxy, modelled ΔG/Kd, stability, solubility, Triple-Gate checks) for **research use only**.\n\n"
+        "**Molecule intent:** candidates are optimised against the resolved target and pocket in the 3D viewer; "
+        "wet-lab validation (synthesis, binding assay, cells/organoids) is still required.\n\n"
+        "**Patient care:** only licensed clinicians can author a treatment plan with approved drugs and trials.\n\n"
+        "To run another design pass, say **design a peptide** or **optimise for solubility**.",
+    ),
     (
         r'\bdelta\s*g\b|binding\s+free\s+energ|\bdg\b.*\bbinding\b',
         "**ΔG Binding (Free Energy of Binding)**\n\n"
@@ -470,6 +494,27 @@ _QA_PAIRS = [
         "- 100–1000 nM: moderate\n"
         "- > 1 μM: weak binder\n\n"
         "Proteus estimates Kd via ΔG = RT·ln(Kd) from the multi-objective energy oracle."
+    ),
+    (
+        r'how\s+does\s+(it|this|the\s+platform|the\s+system|everything)\s+work',
+        "**How Proteus works**\n\n"
+        "1. You enter clinical context; Proteus resolves a protein target (built-in list or custom PDB).\n"
+        "2. It runs several rounds of Metropolis–Hastings MCMC with parallel tempering over sequence edits.\n"
+        "3. Each candidate is scored with a composite oracle (binding proxy, stability, solubility, charge, aggregation, etc.).\n"
+        "4. You get ranked sequences, mutation lists, and a 3D viewer — not a clinical treatment plan.\n\n"
+        "**Important:** scores are in-silico heuristics. Strong lab candidates are usually validated with structural models "
+        "or experimental binding (e.g. SPR/ITC). A common docking rule of thumb is ΔG around −6 kcal/mol or better as "
+        "worth ordering for follow-up — treat Proteus numbers as hypotheses until measured."
+    ),
+    (
+        r'results?\s+(of|from|for)|all\s+of\s+the\s+modell|modelling\s+results|what\s+are\s+the\s+results',
+        "**Reading your modelling results**\n\n"
+        "- **Left chat**: each round’s best sequence, metrics, and mutation highlights.\n"
+        "- **Right column**: all candidates sorted by binding proxy (and stability / energy).\n"
+        "- **Center**: PDB with binding-site substitutions mapped onto the structure.\n\n"
+        "**Treatment planning:** Proteus does not prescribe therapy. Use these outputs only as research inputs; "
+        "any real regimen requires clinicians and wet-lab data.\n\n"
+        "If you need a fresh optimisation, send a design command such as *design a peptide* or *optimise for solubility*."
     ),
     (
         r'\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+(proteus|mcmc)\s+work',
@@ -601,6 +646,74 @@ _CONVERSATIONAL_FALLBACK = (
 )
 
 
+def _clinical_context_lines(patient: PatientInfo) -> str:
+    parts = [f"Target / disease context: {patient.cancer_type}"]
+    if patient.tumor_markers:
+        parts.append(f"Markers: {patient.tumor_markers}")
+    if patient.cancer_stage:
+        parts.append(f"Stage: {patient.cancer_stage}")
+    if patient.previous_treatments:
+        parts.append(f"Prior treatments: {patient.previous_treatments}")
+    if patient.modality:
+        parts.append(f"Modality: {patient.modality}")
+    return "\n".join(parts)
+
+
+def _format_session_block(session: Optional[DesignSessionContext]) -> str:
+    if session is None:
+        return "Design session: no completed peptide run has been sent from the UI yet."
+    if not session.best_sequence:
+        return "Design session: UI has not sent a lead sequence yet (complete a design first for residue-level chat)."
+    lines = [
+        "Latest in-silico lead from the workspace:",
+        f"- Sequence: `{session.best_sequence}`",
+    ]
+    if session.seed_sequence:
+        lines.append(f"- Seed before last run: `{session.seed_sequence}`")
+    if session.target_name:
+        lines.append(f"- Target: {session.target_name}")
+    if session.pdb_id:
+        lines.append(f"- PDB: {session.pdb_id}")
+    if session.binding_score is not None:
+        lines.append(f"- Binding proxy (oracle, 0–1): {session.binding_score:.3f}")
+    if session.delta_g_kcal_mol is not None:
+        lines.append(f"- Modelled ΔG binding: {session.delta_g_kcal_mol:.2f} kcal/mol (more negative = tighter; ≈ −6 often used as a rough in-silico ordering threshold)")
+    if session.kd_nM is not None:
+        lines.append(f"- Modelled Kd: {session.kd_nM:.1f} nM")
+    if session.stability_score is not None:
+        lines.append(f"- Stability score (structure propensity proxy): {session.stability_score * 100:.0f}%")
+    if session.solubility_score is not None:
+        lines.append(f"- Solubility score: {session.solubility_score * 100:.0f}%")
+    if session.total_energy is not None:
+        lines.append(f"- Composite oracle energy E (lower is better; not the same as experimental ΔG): {session.total_energy:.3f}")
+    if session.lab_viability_score is not None:
+        lines.append(f"- Lab viability score: {session.lab_viability_score:.0f}/100")
+    lines.append(
+        "Interpretation rules: binding % in the UI is the oracle proxy; ΔG/Kd are modelled from that proxy. "
+        "Do not present numbers as clinically validated affinities."
+    )
+    return "\n".join(lines)
+
+
+def _conversational_fallback_rich(
+    patient: PatientInfo, session: Optional[DesignSessionContext],
+) -> str:
+    base = _CONVERSATIONAL_FALLBACK
+    if session and session.best_sequence:
+        return (
+            base
+            + "\n\n**Using your current lead peptide**\n"
+            + _format_session_block(session)
+            + "\n\nOllama is not running locally — start it with `ollama serve` for free-form AI answers."
+        )
+    return (
+        base
+        + "\n\n"
+        + _clinical_context_lines(patient)
+        + "\n\nAfter you run **design a peptide**, this panel will attach sequence metrics so every follow-up can stay grounded in that candidate."
+    )
+
+
 def _is_design_request(message: str) -> bool:
     """True if the message clearly requests a new MCMC design run."""
     text = message.lower()
@@ -608,13 +721,24 @@ def _is_design_request(message: str) -> bool:
 
 
 def _is_question(message: str) -> bool:
-    """True if the message looks like a knowledge/conversational question."""
-    text = message.strip().lower()
-    if '?' in text:
+    """True if the message looks like a knowledge/conversational question (not a bare design command)."""
+    text = (message or "").strip().lower()
+    if not text:
+        return False
+    if _QUESTION_MARK_RE.search(text):
         return True
-    starters = ('what', 'how', 'why', 'when', 'where', 'who', 'explain',
-                 'describe', 'tell me', 'can you', 'could you', 'does', 'do you')
-    return any(text.startswith(s) for s in starters)
+    starters = (
+        "what", "how", "why", "when", "where", "who", "explain",
+        "describe", "tell me", "can you", "could you", "would you",
+        "should i", "does", "do you", "is it", "are we", "are you",
+        "is there", "are there", "could i", "would it",
+    )
+    if any(text.startswith(s) for s in starters):
+        return True
+    # Interrogative phrasing without a trailing question mark (common in chat UIs).
+    if re.match(r"^\s*(how|what|why|when|where|who)\s+\w+", text):
+        return True
+    return False
 
 
 def _answer_question(message: str) -> Optional[str]:
@@ -629,12 +753,12 @@ def _answer_question(message: str) -> Optional[str]:
 _OLLAMA_URL = "http://localhost:11434/api/chat"
 _OLLAMA_MODEL = "llama3.2"
 _OLLAMA_SYSTEM = (
-    "You are Proteus, an AI protein therapeutic design assistant. "
-    "You help researchers understand designed protein and peptide therapeutics. "
-    "Be concise, factual, and scientific. Answer questions about designed sequences, "
-    "mechanisms of action, protein biology, and oncology targets. "
-    "If asked to design or generate a new protein, tell the user to say "
-    "'design a peptide' or 'optimize' to start a new design run — do not generate sequences yourself."
+    "You are Proteus, a peptide / protein design copilot in a research UI. "
+    "You answer **anything** the user asks about the current session, peptide sequence, biophysics, metrics, or interpretation. "
+    "Be concise, accurate, and honest about model limits (in-silico heuristics, not clinical truth). "
+    "When session context includes a lead sequence and scores, ground your answers in those numbers. "
+    "If the user wants a **new** optimisation run, tell them explicitly to type phrases like **design a peptide**, "
+    "**optimize for …**, or **run MCMC again** — do not invent a full new MCMC trajectory yourself."
 )
 
 
@@ -948,36 +1072,35 @@ class ProteinDesignAgent:
     def _build_structure_url(self, pdb_id: str) -> str:
         return "https://www.rcsb.org/3d-view/{}".format(pdb_id)
 
-    def run(self, patient: PatientInfo, message: str) -> AgentRunResponse:
+    def run(
+        self,
+        patient: PatientInfo,
+        message: str,
+        session: Optional[DesignSessionContext] = None,
+    ) -> AgentRunResponse:
         messages: List[AgentMessage] = [AgentMessage(role="user", content=message)]
 
-        # --- Conversational short-circuit: only intercept clear biophysics Q&A ---
-        # If the message matches a known Q&A topic, answer locally without MCMC.
-        # Everything else — design requests, synonyms, typos, ambiguous phrasing —
-        # falls through to the full design pipeline.
-        answer = _answer_question(message)
-        if answer is not None:
-            messages.append(AgentMessage(role="agent", content=answer))
-            return AgentRunResponse(reply=answer, messages=messages)
+        # --- Chat-first: only explicit design verbs start MCMC; everything else is conversational. ---
+        explicit_design = _is_design_request(message)
 
-        # --- Ollama conversational fallback for non-design questions ---
-        # If the message looks like a question (not a design command), try Ollama.
-        # If Ollama is unavailable, fall through to the MCMC pipeline anyway
-        # (the agent will at least produce a design result).
-        if _is_question(message):
-            context_parts = [f"Target: {patient.cancer_type}"]
-            if patient.tumor_markers:
-                context_parts.append(f"Markers: {patient.tumor_markers}")
-            if patient.cancer_stage:
-                context_parts.append(f"Stage: {patient.cancer_stage}")
-            if patient.previous_treatments:
-                context_parts.append(f"Prior treatments: {patient.previous_treatments}")
-            ollama_reply = _call_ollama(message, context="\n".join(context_parts))
+        if not explicit_design:
+            answer = _answer_question(message)
+            if answer is not None:
+                messages.append(AgentMessage(role="agent", content=answer))
+                return AgentRunResponse(reply=answer, messages=messages)
+
+            clinical = _clinical_context_lines(patient)
+            sess = _format_session_block(session)
+            ctx = clinical + "\n\n" + sess
+            ollama_reply = _call_ollama(message, context=ctx)
             if ollama_reply:
                 messages.append(AgentMessage(role="agent", content=ollama_reply))
                 return AgentRunResponse(reply=ollama_reply, messages=messages)
+            fb = _conversational_fallback_rich(patient, session)
+            messages.append(AgentMessage(role="agent", content=fb))
+            return AgentRunResponse(reply=fb.strip(), messages=messages)
 
-        # --- Constraint parsing ---
+        # --- Constraint parsing (MCMC path — explicit design only) ---
         all_notes = (patient.notes or "") + " " + (patient.tumor_markers or "")
         constraints = _parse_constraints(message, all_notes)
 
@@ -1198,6 +1321,7 @@ class ProteinDesignAgent:
                     "mutations": design["mutations"],
                     "scores": {
                         "binding": design["binding_score"],
+                        "binding_score": design["binding_score"],
                         "stability": design["stability_score"],
                         "solubility": design["solubility_score"],
                         "energy": design["total_energy"],
@@ -1390,6 +1514,7 @@ class ProteinDesignAgent:
                 "mutations": best_round["mutations"],
                 "scores": {
                     "binding": best_round["binding_score"],
+                    "binding_score": best_round["binding_score"],
                     "stability": best_round["stability_score"],
                     "solubility": best_round["solubility_score"],
                     "energy": best_round["total_energy"],

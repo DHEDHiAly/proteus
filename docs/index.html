@@ -219,7 +219,7 @@ Proteus
 <div class="container">
 <div class="hero-badge">Research Use Only</div>
 <h1>Design better proteins<br><span>in seconds, not months</span></h1>
-<p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus does it in under two seconds — using MCMC-based design that outperforms AlphaFold2, AlphaFold3, RoseTTAFold2, ESMFold, OmegaFold, ROSETTA Design, FoldX, and MD Consensus across 10 targets spanning oncology, neurodegeneration, and infectious disease, with an average 80% improvement in estimated binding affinity vs AlphaFold2.</p>
+<p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus collapses the in-silico loop to about a second with MCMC-guided sequence search and a transparent multi-term energy oracle. Benchmarks on this site summarize <em>internal heuristic rankings</em> against literature-aligned baselines — not a claim to beat every external structure or free-energy pipeline on identical experimental setups.</p>
 <div class="hero-btns">
 <a href="https://tally.so/r/yPjKlg" class="primary" target="_blank">Request Demo</a>
 <a href="#benchmarks" class="secondary">View Benchmarks</a>
@@ -461,7 +461,10 @@ Four proposal operators sample biologically plausible mutations:
 <div class="container">
 <div class="section-label">Benchmarks</div>
 <h2>Proteus vs Other Methods</h2>
-<p class="subtitle">Performance data across 10 targets spanning oncology, neurodegeneration, and infectious disease — benchmarked against 9 alternative approaches: AlphaFold2, AlphaFold3, RoseTTAFold2, ESMFold, OmegaFold, ROSETTA Design, FoldX, MD Consensus, and a random baseline. Proteus ranks first in binding affinity on every target at a fraction of the time and cost. Lower nM = stronger binding.</p>
+<p class="subtitle">In-silico campaign summaries across ten example targets (oncology, neurodegeneration, infectious disease). Comparisons use Proteus’s internal affinity heuristic and literature-aligned baselines — not identical-pose re-docking with AlphaFold3, MD free-energy perturbation, or experimental SPR/ITC. Use this table as a <em>within-pipeline</em> ranking story; wet-lab validation is required for any therapeutic claim.</p>
+<p style="font-size:.72rem;color:#666;line-height:1.75;margin-top:16px;border-left:2px solid #2a2a2a;padding-left:14px;max-width:720px">
+<strong>Why this matters:</strong> State-of-the-art binding prediction is pose-dependent and often ensemble-based. Proteus optimizes sequence-level heuristics (plus MCMC search). Strong published drugs still set the experimental bar — the honest goal is fast candidate generation and transparent scoring, not “beating AF3” on a single unverified metric.
+</p>
 
 <div class="benchmark-hero">
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
@@ -815,35 +818,6 @@ Binding affinity values (nM) for Proteus candidates are estimated using a multi-
 </div>
 </section>
 
-<section id="recognition" style="border-top:1px solid #0a0a0a">
-<div class="container">
-<div class="section-label">Recognition</div>
-<h2>Research-backed, institution-affiliated</h2>
-<p class="subtitle">Proteus is built on published research and affiliated with leading computational biology institutions.</p>
-<div class="social-proof">
-<div class="social-item">
-<div class="org">MIT Critical Data</div>
-<div class="detail">Research collaboration — AI in clinical medicine</div>
-</div>
-<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
-<div class="social-item">
-<div class="org">Published Research</div>
-<div class="detail">AI-driven mortality prediction on MIMIC-IV · 2025</div>
-</div>
-<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
-<div class="social-item">
-<div class="org">Open Source</div>
-<div class="detail">Full codebase on GitHub — reproducible, auditable</div>
-</div>
-<div class="social-item" style="width:1px;height:40px;background:#1a1a1a"></div>
-<div class="social-item">
-<div class="org">10 Targets Benchmarked</div>
-<div class="detail">EGFRvIII · PD-L1 · KRAS G12C · HER2 · BCR-ABL · BRAF V600E · BACE1 · Alpha-Syn · HIV-PR · SARS-CoV-2 3CL</div>
-</div>
-</div>
-</div>
-</section>
-
 <section id="business" style="border-top:1px solid #0a0a0a">
 <div class="container">
 <div class="section-label">Business Model</div>
@@ -929,6 +903,7 @@ All code is open source. The platform is designed for regulatory-aligned researc
 <a href="https://dhedhialy.github.io/" target="_blank">Portfolio</a>
 </div>
 <p class="disclaimer">FOR RESEARCH USE ONLY. Not a medical device. Designed protein sequences are computational predictions and must undergo wet-lab validation. This tool is not intended for diagnostic or therapeutic use.</p>
+<p style="font-size:.55rem;color:#2a2a2a;margin-top:10px">Agent and workflow experiments in this project use <strong>Subquadratic</strong> (AI tooling) alongside the open-source stack.</p>
 </div>
 </footer>
 

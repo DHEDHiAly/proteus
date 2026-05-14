@@ -22,9 +22,26 @@ class AgentMessage(BaseModel):
     data: Optional[dict] = None
 
 
+class DesignSessionContext(BaseModel):
+    """Optional snapshot from the browser so follow-up chat can reference the current peptide run."""
+
+    target_name: Optional[str] = None
+    pdb_id: Optional[str] = None
+    best_sequence: Optional[str] = None
+    seed_sequence: Optional[str] = None
+    binding_score: Optional[float] = Field(None, description="Oracle binding proxy 0–1")
+    delta_g_kcal_mol: Optional[float] = None
+    kd_nM: Optional[float] = None
+    stability_score: Optional[float] = None
+    solubility_score: Optional[float] = None
+    total_energy: Optional[float] = None
+    lab_viability_score: Optional[float] = None
+
+
 class AgentRunRequest(BaseModel):
     patient: PatientInfo
     message: str
+    session: Optional[DesignSessionContext] = None
 
 
 class AgentRunResponse(BaseModel):

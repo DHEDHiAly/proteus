@@ -45,6 +45,21 @@ export interface AgentMessage {
   }
 }
 
+/** Sent with each chat message so the agent can answer about the current lead peptide. */
+export interface DesignSessionContext {
+  target_name?: string
+  pdb_id?: string
+  best_sequence?: string
+  seed_sequence?: string
+  binding_score?: number
+  delta_g_kcal_mol?: number
+  kd_nM?: number
+  stability_score?: number
+  solubility_score?: number
+  total_energy?: number
+  lab_viability_score?: number
+}
+
 export interface IterationRound {
   round: number
   sequence: string
@@ -73,6 +88,7 @@ export interface IterationRound {
 export interface AgentRunRequest {
   patient: PatientInfo
   message: string
+  session?: DesignSessionContext
 }
 
 export interface AgentRunResponse {

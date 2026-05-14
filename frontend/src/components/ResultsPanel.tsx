@@ -9,6 +9,7 @@ interface Candidate {
   total_energy?: number;
   num_mutations_from_seed?: number;
   kd_nM?: number;
+  delta_g_binding_kcal_mol?: number;
   serum_half_life_min?: number;
   selectivity_ratio?: number;
   toxicity_flag?: boolean;
@@ -101,12 +102,15 @@ export default function ResultsPanel({ candidates, seed, onInspect, onExport, on
                 dangerouslySetInnerHTML={{ __html: highlightMutations(c.sequence) }}
               />
               <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[8px] text-gray-600 mt-0.5">
+                {typeof c.delta_g_binding_kcal_mol === 'number' && !Number.isNaN(c.delta_g_binding_kcal_mol) ? (
+                  <span className="text-gray-400">ΔG: {c.delta_g_binding_kcal_mol.toFixed(1)} kcal/mol</span>
+                ) : null}
                 <span>Binding: {(c.binding_score * 100).toFixed(0)}%</span>
                 {c.kd_nM != null && (
                   <span>Kd: {c.kd_nM < 1000 ? c.kd_nM.toFixed(0) + ' nM' : (c.kd_nM / 1000).toFixed(1) + ' μM'}</span>
                 )}
                 <span>Stab: {(c.stability_score * 100).toFixed(0)}%</span>
-                {c.total_energy != null && <span>E: {c.total_energy.toFixed(3)}</span>}
+                {c.total_energy != null && <span title="Composite oracle energy (not the same as experimental ΔG)">E: {c.total_energy.toFixed(3)}</span>}
               </div>
               {c.toxicity_flag && (
                 <span className="inline-block mt-0.5 text-[7px] bg-red-900/40 text-red-400 border border-red-900/50 px-1 py-0.5 rounded">

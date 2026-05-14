@@ -36,6 +36,10 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class PasswordResetRequest(BaseModel):
     email: str
 
