@@ -35,8 +35,8 @@ export default function IterationTable({ rounds, onSelect }: Props) {
               <td className="py-2 pr-3 font-mono text-[11px] truncate max-w-[140px]">{r.sequence}</td>
               <td className="py-2 pr-3 text-right">{(r.binding_score * 100).toFixed(0)}%</td>
               <td className="py-2 pr-3 text-right">{(r.stability_score * 100).toFixed(0)}%</td>
-              <td className="py-2 pr-3 text-right text-gray-400">{r.total_energy.toFixed(3)}</td>
-              <td className="py-2 text-right">{r.fold_plddt.toFixed(3)}</td>
+              <td className="py-2 pr-3 text-right text-gray-400">{typeof r.total_energy === 'number' ? r.total_energy.toFixed(3) : '-'}</td>
+              <td className="py-2 text-right">{r.fold_plddt != null ? r.fold_plddt.toFixed(3) : '-'}</td>
             </tr>
           ))}
         </tbody>

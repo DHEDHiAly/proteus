@@ -37,7 +37,7 @@ export interface IterationRound {
   stability_score: number
   solubility_score: number
   total_energy: number
-  fold_plddt: number
+  fold_plddt?: number
   is_best: boolean
 }
 
