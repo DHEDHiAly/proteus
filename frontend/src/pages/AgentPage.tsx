@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, FormEvent, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { PatientInfo, AgentMessage, DesignSessionContext } from '../types/agent';
+import type { PatientInfo, AgentMessage, AgentRunResponse, DesignSessionContext } from '../types/agent';
 import { agentApi } from '../services/agent';
 import { useAuth } from '../hooks/useAuth';
 import PatientForm from '../components/PatientForm';
@@ -674,6 +674,8 @@ export default function AgentPage() {
   const [comparisonMode, setComparisonMode] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
   const [designSession, setDesignSession] = useState<DesignSessionContext | undefined>(undefined);
+  const [streamStatus, setStreamStatus] = useState<string>('');
+  const [esmfoldPdb, setEsmfoldPdb] = useState<string | null>(null);
 
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -733,115 +735,170 @@ export default function AgentPage() {
     const userMessage = input;
     setInput('');
 
-    // ── Tier 1: Design request → MCMC backend ────────────────────────────────
+    // ── Tier 1: Design request → MCMC backend (streaming SSE) ────────────────
     // Only messages that explicitly ask for a new design/optimization run hit the backend.
     if (DESIGN_RE.test(userMessage)) {
       setLoading(true);
       setIsRunning(true);
+      setStreamStatus('Initialising...');
+      setEsmfoldPdb(null);
       try {
-        const res = await agentApi.design(patient, userMessage, designSession);
-        // Only append agent messages — the user message was already added optimistically
-        // above, and the backend echoes it back as messages[0] which would cause a duplicate.
-        const agentMessages = res.data.messages.filter((m) => m.role === 'agent');
-        setMessages((prev) => [...prev, ...agentMessages]);
-        setIsRunning(false);
-        if (res.data.run_id) setCurrentRunId(res.data.run_id);
+        const token = localStorage.getItem('proteus_access_token') || '';
+        const response = await fetch('/api/v1/agent/design/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            patient,
+            message: userMessage,
+            ...(designSession ? { session: designSession } : {}),
+          }),
+        });
 
-        const rounds = res.data.messages
-          ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
-          .map((m) => m.data?.rounds)
-          .flat()
-          .filter(Boolean) || [];
-
-        const lastComplete = res.data.messages?.filter((m) => m.data?.status === 'complete').pop();
-        const totalTime = lastComplete?.data?.total_time || 0;
-
-        if (rounds.length > 0) {
-          const withMuts = res.data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
-          const roundData = rounds.map((r: any, i: number) => ({
-            round: i + 1,
-            sequence: r.sequence || '',
-            binding_score: r.binding_score || 0,
-            stability_score: r.stability_score || 0,
-            solubility_score: r.solubility_score || 0,
-            total_energy: r.total_energy || 0,
-            mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
-          }));
-          setDesignRounds(roundData);
-          setDesignTime(totalTime);
-          setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+        if (!response.ok || !response.body) {
+          throw new Error(`Server returned ${response.status}`);
         }
 
-        if (res.data.candidate_sequence) {
-          setCandidates((prev) => {
-            const ranked = (res.data.messages
-              .filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
-              .flatMap((m) => m.data?.rounds || [])
-              .map((r: any, i: number) => ({
-                rank: i + 1, sequence: r.sequence || '',
-                binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
-                solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
-                kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
-                serum_half_life_min: r.serum_half_life_min,
-                selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
-              })) as Candidate[]);
-            return ranked.length > 0 ? ranked : prev;
-          });
-          const last = res.data.messages[res.data.messages.length - 1];
-          if (last?.data?.pdb_id) {
-            setActiveViewerPdb(last.data.pdb_id);
-            setActiveViewerMuts(res.data.mutations || []);
-            setSeed(last.data.seed || res.data.candidate_sequence);
-          }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-          // Build designSession from best round so follow-up chat is grounded in actual results
-          if (lastComplete?.data?.status === 'complete') {
-            const bestRound = (lastComplete.data.rounds as any[])
-              ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
-            if (bestRound) {
-              const seedSeq: string = lastComplete.data.seed || '';
-              const bestSeq: string = bestRound.sequence || '';
-              const mutationsFromSeed: string[] = [];
-              for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
-                if (seedSeq[i] !== bestSeq[i]) {
-                  mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop()!;
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event: any;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (event.type === 'progress') {
+              setStreamStatus(
+                `Chain ${(event.chain_index ?? 0) + 1} · step ${event.step}/${event.total_steps} · energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
+              );
+            } else if (event.type === 'epoch_complete') {
+              setStreamStatus(
+                `Epoch ${(event.epoch ?? 0) + 1}/${event.num_epochs} · best energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
+              );
+            } else if (event.type === 'error') {
+              throw new Error(event.detail || 'Streaming error');
+            } else if (event.type === 'complete') {
+              setStreamStatus('');
+              const data: AgentRunResponse = event.result;
+
+              // Only append agent messages — user message was already added optimistically.
+              const agentMessages = data.messages.filter((m) => m.role === 'agent');
+              setMessages((prev) => [...prev, ...agentMessages]);
+              setIsRunning(false);
+              if (data.run_id) setCurrentRunId(data.run_id);
+
+              // Store ESMFold PDB string if structure prediction succeeded
+              if (data.pdb_string) setEsmfoldPdb(data.pdb_string);
+
+              const rounds = data.messages
+                ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+                .map((m) => m.data?.rounds)
+                .flat()
+                .filter(Boolean) || [];
+
+              const lastComplete = data.messages?.filter((m) => m.data?.status === 'complete').pop();
+              const totalTime = lastComplete?.data?.total_time || 0;
+
+              if (rounds.length > 0) {
+                const withMuts = data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
+                const roundData = rounds.map((r: any, i: number) => ({
+                  round: i + 1,
+                  sequence: r.sequence || '',
+                  binding_score: r.binding_score || 0,
+                  stability_score: r.stability_score || 0,
+                  solubility_score: r.solubility_score || 0,
+                  total_energy: r.total_energy || 0,
+                  mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
+                }));
+                setDesignRounds(roundData);
+                setDesignTime(totalTime);
+                setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+              }
+
+              if (data.candidate_sequence) {
+                setCandidates((prev) => {
+                  const ranked = (data.messages
+                    .filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+                    .flatMap((m) => m.data?.rounds || [])
+                    .map((r: any, i: number) => ({
+                      rank: i + 1, sequence: r.sequence || '',
+                      binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
+                      solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
+                      kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                      serum_half_life_min: r.serum_half_life_min,
+                      selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
+                    })) as Candidate[]);
+                  return ranked.length > 0 ? ranked : prev;
+                });
+                const last = data.messages[data.messages.length - 1];
+                if (last?.data?.pdb_id) {
+                  setActiveViewerPdb(last.data.pdb_id);
+                  setActiveViewerMuts(data.mutations || []);
+                  setSeed(last.data.seed || data.candidate_sequence);
+                }
+
+                // Build designSession from best round so follow-up chat is grounded in actual results
+                if (lastComplete?.data?.status === 'complete') {
+                  const bestRound = (lastComplete.data.rounds as any[])
+                    ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
+                  if (bestRound) {
+                    const seedSeq: string = lastComplete.data.seed || '';
+                    const bestSeq: string = bestRound.sequence || '';
+                    const mutationsFromSeed: string[] = [];
+                    for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
+                      if (seedSeq[i] !== bestSeq[i]) {
+                        mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
+                      }
+                    }
+                    if (bestSeq.length !== seedSeq.length && seedSeq) {
+                      mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
+                    }
+                    const roundsSummary = (lastComplete.data.rounds as any[])?.map((r: any) => ({
+                      round: r.round,
+                      sequence: r.sequence,
+                      binding_score: r.binding_score,
+                      delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                      kd_nM: r.kd_nM,
+                      lab_viability_score: r.lab_viability_score,
+                      is_best: r.is_best,
+                    })) || [];
+                    setDesignSession({
+                      target_name: lastComplete.data.target || patient?.cancer_type || '',
+                      pdb_id: lastComplete.data.pdb_id || '',
+                      best_sequence: bestSeq,
+                      seed_sequence: seedSeq,
+                      binding_score: bestRound.binding_score,
+                      delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
+                      kd_nM: bestRound.kd_nM,
+                      stability_score: bestRound.stability_score,
+                      solubility_score: bestRound.solubility_score,
+                      total_energy: bestRound.total_energy,
+                      lab_viability_score: bestRound.lab_viability_score,
+                      mutations_from_seed: mutationsFromSeed,
+                      rounds_summary: roundsSummary,
+                    });
+                  }
                 }
               }
-              if (bestSeq.length !== seedSeq.length && seedSeq) {
-                mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
-              }
-              const roundsSummary = (lastComplete.data.rounds as any[])?.map((r: any) => ({
-                round: r.round,
-                sequence: r.sequence,
-                binding_score: r.binding_score,
-                delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
-                kd_nM: r.kd_nM,
-                lab_viability_score: r.lab_viability_score,
-                is_best: r.is_best,
-              })) || [];
-              setDesignSession({
-                target_name: lastComplete.data.target || patient?.cancer_type || '',
-                pdb_id: lastComplete.data.pdb_id || '',
-                best_sequence: bestSeq,
-                seed_sequence: seedSeq,
-                binding_score: bestRound.binding_score,
-                delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
-                kd_nM: bestRound.kd_nM,
-                stability_score: bestRound.stability_score,
-                solubility_score: bestRound.solubility_score,
-                total_energy: bestRound.total_energy,
-                lab_viability_score: bestRound.lab_viability_score,
-                mutations_from_seed: mutationsFromSeed,
-                rounds_summary: roundsSummary,
-              });
             }
           }
         }
       } catch (err: any) {
-        const detail = err?.response?.data?.detail || 'Request failed';
+        const detail = err?.message || 'Request failed';
         setError(detail);
         setMessages((prev) => [...prev, { role: 'agent', content: `Error: ${detail}`, data: { status: 'error' } }]);
         setIsRunning(false);
+        setStreamStatus('');
       }
       setLoading(false);
       return;
@@ -1133,6 +1190,31 @@ export default function AgentPage() {
                 {messages.map((msg, i) => (
                   <AgentMessageCard key={i} msg={msg} onSave={handleSaveDesign} />
                 ))}
+                {streamStatus && (
+                  <div className="flex items-center space-x-2 px-1 py-1 text-[10px] text-gray-500 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+                    <span>{streamStatus}</span>
+                  </div>
+                )}
+                {esmfoldPdb && !streamStatus && (
+                  <div className="border border-[#1a1a1a] rounded-lg px-2.5 py-2 text-[10px] text-gray-400 flex items-center justify-between">
+                    <span>ESMFold structure predicted</span>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([esmfoldPdb], { type: 'chemical/x-pdb' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `proteus-esmfold-${designSession?.best_sequence?.slice(0, 8) || 'peptide'}.pdb`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="text-white underline underline-offset-2 hover:text-gray-300 transition-colors"
+                    >
+                      Download PDB
+                    </button>
+                  </div>
+                )}
                 <div ref={chatEnd} />
               </div>
               <div className="p-3 border-t border-[#1a1a1a]">

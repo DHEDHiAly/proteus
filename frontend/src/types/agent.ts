@@ -100,6 +100,7 @@ export interface AgentRunResponse {
   candidate_sequence?: string
   candidate_scores?: Record<string, number>
   pdb_id?: string
+  pdb_string?: string
   mutations?: { position: number; from: string; to: string }[]
   rounds?: number[]
   total_time?: number
