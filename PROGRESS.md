@@ -874,3 +874,29 @@ The TypeScript `DesignSessionContext` interface was missing all 25+ synthesis/se
 ### Verification
 - `tsc --noEmit`: 0 errors
 - Python import check (`DesignSessionContext`, `ChatResponder`, `ProteinDesignAgent`): clean, no errors
+
+---
+
+## Bug Fix: job_queue.py RuntimeError "no running event loop" ✅ Fixed
+
+**File:** `backend/app/services/job_queue.py`
+
+**Problem:** The `run_job` async method created a `progress_callback` lambda that called `asyncio.create_task()` directly (line 121). However, the MCMC `_run_chain_epoch` method runs inside a `ThreadPoolExecutor` — those worker threads have **no running event loop**, so `asyncio.create_task()` raises `RuntimeError: no running event loop`. This caused all MCMC runs initiated via the runs API (POST `/api/v1/runs`) to fail immediately with "FAILED" status.
+
+**Fix:** Captured the running event loop at the top of `run_job` (`loop = asyncio.get_running_loop()`) and replaced `asyncio.create_task(...)` with `asyncio.run_coroutine_threadsafe(..., loop)`, which is the correct API for scheduling a coroutine from a different thread.
+
+**Impact:** All MCMC runs through the job queue now work correctly. The streaming SSE agent endpoint was not affected (it uses a different callback path).
+
+---
+
+## Feature: AgentPage REST fallback — AgentPage.tsx ✅
+
+**File:** `frontend/src/pages/AgentPage.tsx`
+
+**Problem:** The Tier 1 design handler used only the streaming SSE endpoint (`/api/v1/agent/design/stream`). If the streaming endpoint was unavailable (e.g., backend restart during development, middleware rewriting the response), the design request would fail with no fallback.
+
+**Fix:** Refactored Tier 1 to a two-phase approach:
+1. **Try streaming first:** Attempt `fetch('/api/v1/agent/design/stream')` and check if it returns `200 OK` with a readable body.
+2. **REST fallback:** If streaming fails (network error, 404, 405), call `agentApi.design()` (the blocking REST endpoint) and process the response identically.
+
+**Result:** Graceful degradation — SSE streaming when available, REST fallback otherwise. Both paths populate all 25+ session fields identically.

@@ -43,3 +43,10 @@ docker-compose.override.yml
 
 # Logs
 *.log
+
+# Claude AI workspace
+.claude/
+
+# Model files
+model
+model.js

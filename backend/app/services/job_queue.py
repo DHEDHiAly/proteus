@@ -103,6 +103,10 @@ class MCMCJobRunner:
         run_id_str = str(run_id)
         logger.info(f"Starting MCMC job {run_id_str} for target {target_name}")
 
+        # Capture the running event loop at async entry; _run_chain_epoch runs in
+        # ThreadPoolExecutor threads where get_running_loop() would fail.
+        loop = asyncio.get_running_loop()
+
         try:
             async with db_session_factory() as db:
                 result = await db.execute(
@@ -118,8 +122,8 @@ class MCMCJobRunner:
 
             sampler = self.create_sampler(
                 config, run_id_str,
-                progress_callback=lambda msg: asyncio.create_task(
-                    self.broadcast_progress(run_id_str, msg)
+                progress_callback=lambda msg: asyncio.run_coroutine_threadsafe(
+                    self.broadcast_progress(run_id_str, msg), loop
                 ),
             )
 

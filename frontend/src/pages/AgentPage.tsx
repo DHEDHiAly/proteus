@@ -735,61 +735,191 @@ export default function AgentPage() {
     const userMessage = input;
     setInput('');
 
-    // ── Tier 1: Design request → MCMC backend (streaming SSE) ────────────────
-    // Only messages that explicitly ask for a new design/optimization run hit the backend.
-    if (DESIGN_RE.test(userMessage)) {
-      setLoading(true);
-      setIsRunning(true);
-      setStreamStatus('Initialising...');
-      setEsmfoldPdb(null);
-      try {
-        const token = localStorage.getItem('proteus_access_token') || '';
-        const response = await fetch('/api/v1/agent/design/stream', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            patient,
-            message: userMessage,
-            ...(designSession ? { session: designSession } : {}),
-          }),
-        });
+     // ── Tier 1: Design request → MCMC backend (streaming SSE, falls back to REST) ─
+     // Only messages that explicitly ask for a new design/optimization run hit the backend.
+     if (DESIGN_RE.test(userMessage)) {
+       setLoading(true);
+       setIsRunning(true);
+       setStreamStatus('Initialising...');
+       setEsmfoldPdb(null);
+       try {
+         const token = localStorage.getItem('proteus_access_token') || '';
 
-        if (!response.ok || !response.body) {
-          throw new Error(`Server returned ${response.status}`);
-        }
+         // ── Try streaming endpoint first ──────────────────────────────────
+         let usedStreaming = false;
+         let streamResponse: Response | null = null;
+         try {
+           streamResponse = await fetch('/api/v1/agent/design/stream', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/json',
+               'Authorization': `Bearer ${token}`,
+             },
+             body: JSON.stringify({
+               patient,
+               message: userMessage,
+               ...(designSession ? { session: designSession } : {}),
+             }),
+           });
+           if (streamResponse.ok && streamResponse.body) {
+             usedStreaming = true;
+           }
+         } catch {
+           // fetch itself failed (network error) — fall through to REST
+         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+         // ── REST fallback if streaming is unavailable (404, 405, network) ─
+         if (!usedStreaming) {
+           setStreamStatus('Running design...');
+           const res = await agentApi.design(patient, userMessage, designSession);
+           const data: AgentRunResponse = res.data;
+           setStreamStatus('');
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop()!;
+           const agentMessages = data.messages.filter((m) => m.role === 'agent');
+           setMessages((prev) => [...prev, ...agentMessages]);
+           setIsRunning(false);
+           if (data.run_id) setCurrentRunId(data.run_id);
+           if (data.pdb_string) setEsmfoldPdb(data.pdb_string);
 
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            let event: any;
-            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+           const lastComplete = data.messages?.filter((m) => m.data?.status === 'complete').pop();
+           const rounds = data.messages
+             ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+             .map((m) => m.data?.rounds).flat().filter(Boolean) || [];
+           const totalTime = lastComplete?.data?.total_time || 0;
 
-            if (event.type === 'progress') {
-              setStreamStatus(
-                `Chain ${(event.chain_index ?? 0) + 1} · step ${event.step}/${event.total_steps} · energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
-              );
-            } else if (event.type === 'epoch_complete') {
-              setStreamStatus(
-                `Epoch ${(event.epoch ?? 0) + 1}/${event.num_epochs} · best energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
-              );
-            } else if (event.type === 'error') {
-              throw new Error(event.detail || 'Streaming error');
-            } else if (event.type === 'complete') {
-              setStreamStatus('');
-              const data: AgentRunResponse = event.result;
+           if (rounds.length > 0) {
+             const withMuts = data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
+             setDesignRounds(rounds.map((r: any, i: number) => ({
+               round: i + 1,
+               sequence: r.sequence || '',
+               binding_score: r.binding_score || 0,
+               stability_score: r.stability_score || 0,
+               solubility_score: r.solubility_score || 0,
+               total_energy: r.total_energy || 0,
+               mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
+             })));
+             setDesignTime(totalTime);
+             setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+           }
+
+           if (data.candidate_sequence) {
+             setCandidates((prev) => {
+               const ranked = (data.messages
+                 .filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+                 .flatMap((m) => m.data?.rounds || [])
+                 .map((r: any, i: number) => ({
+                   rank: i + 1, sequence: r.sequence || '',
+                   binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
+                   solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
+                   kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                   serum_half_life_min: r.serum_half_life_min,
+                   selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
+                 })) as Candidate[]);
+               return ranked.length > 0 ? ranked : prev;
+             });
+             const last = data.messages[data.messages.length - 1];
+             if (last?.data?.pdb_id) {
+               setActiveViewerPdb(last.data.pdb_id);
+               setActiveViewerMuts(data.mutations || []);
+               setSeed(last.data.seed || data.candidate_sequence);
+             }
+
+             if (lastComplete?.data?.status === 'complete') {
+               const allRounds = lastComplete.data.rounds as any[];
+               const bestRound = allRounds?.find((r: any) => r.is_best)
+                 ?? allRounds?.sort((a: any, b: any) => {
+                     const dgA = a.delta_g_binding_kcal_mol ?? 0;
+                     const dgB = b.delta_g_binding_kcal_mol ?? 0;
+                     if (dgA !== dgB) return dgA - dgB;
+                     return (b.binding_score ?? 0) - (a.binding_score ?? 0);
+                   })[0];
+               if (bestRound) {
+                 const seedSeq: string = lastComplete.data.seed || '';
+                 const bestSeq: string = bestRound.sequence || '';
+                 const mutationsFromSeed: string[] = [];
+                 for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
+                   if (seedSeq[i] !== bestSeq[i]) mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
+                 }
+                 if (bestSeq.length !== seedSeq.length && seedSeq) mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
+                 setDesignSession({
+                   target_name: lastComplete.data.target || patient?.cancer_type || '',
+                   pdb_id: lastComplete.data.pdb_id || '',
+                   best_sequence: bestSeq, seed_sequence: seedSeq,
+                   binding_score: bestRound.binding_score,
+                   delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
+                   kd_nM: bestRound.kd_nM,
+                   stability_score: bestRound.stability_score,
+                   solubility_score: bestRound.solubility_score,
+                   total_energy: bestRound.total_energy,
+                   lab_viability_score: bestRound.lab_viability_score,
+                   mutations_from_seed: mutationsFromSeed,
+                   rounds_summary: (lastComplete.data.rounds as any[])?.map((r: any) => ({
+                     round: r.round, sequence: r.sequence,
+                     binding_score: r.binding_score, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                     kd_nM: r.kd_nM, lab_viability_score: r.lab_viability_score, is_best: r.is_best,
+                   })) || [],
+                   synthesis_feasibility_score: bestRound.synthesis_feasibility_score,
+                   synthesis_feasible: bestRound.synthesis_feasible,
+                   synthesis_issues: bestRound.synthesis_issues,
+                   synthesis_recommendations: bestRound.synthesis_recommendations,
+                   estimated_synthesis_time_days: bestRound.estimated_synthesis_time_days,
+                   estimated_synthesis_cost_usd: bestRound.estimated_synthesis_cost_usd,
+                   selectivity_score: bestRound.selectivity_score,
+                   problematic_off_targets: bestRound.problematic_off_targets,
+                   escape_score: bestRound.escape_score,
+                   is_escape_resistant: bestRound.is_escape_resistant,
+                   estimated_serum_half_life_min: bestRound.estimated_serum_half_life_min,
+                   bbb_penetration_feasible: bestRound.bbb_penetration_feasible,
+                   tissue_accumulation_risk: bestRound.tissue_accumulation_risk,
+                   net_charge: bestRound.net_charge,
+                   immunogenicity_score: bestRound.immunogenicity_score,
+                   is_high_immunogenic_risk: bestRound.is_high_immunogenic_risk,
+                   immunogenic_motifs_found: bestRound.immunogenic_motifs_found,
+                   mhc_epitope_risk: bestRound.mhc_epitope_risk,
+                   constraint_satisfaction_score: bestRound.constraint_satisfaction_score,
+                   all_constraints_satisfied: bestRound.all_constraints_satisfied,
+                   cost_score: bestRound.cost_score,
+                   affinity_cost_ratio: bestRound.affinity_cost_ratio,
+                   pareto_recommendation: bestRound.pareto_recommendation,
+                 });
+               }
+             }
+           }
+           setLoading(false);
+           return;
+         }
+
+         // ── Streaming path (streamResponse is ok + has body) ──────────────
+         const response = streamResponse!;
+         const reader = response.body!.getReader();
+         const decoder = new TextDecoder();
+         let buffer = '';
+
+         while (true) {
+           const { done, value } = await reader.read();
+           if (done) break;
+           buffer += decoder.decode(value, { stream: true });
+           const lines = buffer.split('\n');
+           buffer = lines.pop()!;
+
+           for (const line of lines) {
+             if (!line.startsWith('data: ')) continue;
+             let event: any;
+             try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+             if (event.type === 'progress') {
+               setStreamStatus(
+                 `Chain ${(event.chain_index ?? 0) + 1} · step ${event.step}/${event.total_steps} · energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
+               );
+             } else if (event.type === 'epoch_complete') {
+               setStreamStatus(
+                 `Epoch ${(event.epoch ?? 0) + 1}/${event.num_epochs} · best energy ${event.best_energy != null ? event.best_energy.toFixed(4) : '—'}`
+               );
+             } else if (event.type === 'error') {
+               throw new Error(event.detail || 'Streaming error');
+             } else if (event.type === 'complete') {
+               setStreamStatus('');
+               const data: AgentRunResponse = event.result;
 
               // Only append agent messages — user message was already added optimistically.
               const agentMessages = data.messages.filter((m) => m.role === 'agent');

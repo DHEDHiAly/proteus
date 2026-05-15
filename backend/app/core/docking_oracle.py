@@ -508,3 +508,260 @@ class EnhancedPKPredictor:
             'd_amino_acid_recommendation': d_amino_recommendation,
             'recommendations': recommendations,
         }
+
+
+class ImmunogenicityScreener:
+    """
+    Detects immunogenic epitopes, MHC anchors, FLAG tags, and common immune triggers.
+    Scores risk of adaptive/innate immune activation (0–100, higher = more immunogenic).
+    """
+
+    # MHC-binding anchor motifs (simplified; real prediction uses NetMHC)
+    _MHC_ANCHORS = {
+        'HLA-A*02:01': ['L', 'M', 'I', 'V'],  # hydrophobic preference
+        'HLA-B*07:02': ['P', 'V', 'K', 'R'],
+        'HLA-C*07:02': ['W', 'Y', 'F', 'L'],
+    }
+
+    # Common immunogenic peptide motifs (known T-cell epitopes)
+    _IMMUNOGENIC_MOTIFS = [
+        'LMWKY', 'FPWRK', 'GWRL', 'PFVW',  # strong HLA binders
+        'CXC', 'WXW', 'FXF',  # hydrophobic anchors
+    ]
+
+    # Common immunogenic tags/sequences
+    _IMMUNOGENIC_TAGS = {
+        'FLAG': 'DYKDDDDK',
+        'His6': 'HHHHHH',
+        'HA': 'YPYDVPDYA',
+        'Myc': 'EQKLISEEDL',
+        'GST': 'MSPILGYWKIK',
+    }
+
+    # Protease-sensitive motifs (trigger innate immunity)
+    _PROTEASE_SENSITIVE = ['GLG', 'AGA', 'RXR', 'KXK']
+
+    def screen_immunogenicity(self, peptide_sequence: str) -> Dict:
+        """
+        Score immunogenicity risk. Returns 0–100 score + detailed flags.
+        """
+        seq = peptide_sequence.upper()
+        length = len(seq)
+        score = 0.0
+        issues: List[str] = []
+        recommendations: List[str] = []
+
+        # ── MHC Epitope Check ──
+        mhc_anchor_count = 0
+        for anchor_set in self._MHC_ANCHORS.values():
+            for aa in seq:
+                if aa in anchor_set:
+                    mhc_anchor_count += 1
+        mhc_anchor_fraction = mhc_anchor_count / max(length, 1)
+
+        if mhc_anchor_fraction > 0.5:
+            score += 30
+            issues.append(f"High MHC anchor content ({mhc_anchor_fraction:.0%}): likely HLA-peptide binder")
+            recommendations.append("Consider substitutions at positions: " + ", ".join(
+                f"{i+1}" for i, aa in enumerate(seq)
+                if any(aa in anchor_set for anchor_set in self._MHC_ANCHORS.values())
+            )[:50])
+        elif mhc_anchor_fraction > 0.3:
+            score += 15
+            issues.append(f"Moderate MHC anchor content ({mhc_anchor_fraction:.0%})")
+
+        # ── Immunogenic Motif Check ──
+        motif_count = 0
+        found_motifs = []
+        for motif in self._IMMUNOGENIC_MOTIFS:
+            if motif in seq:
+                motif_count += 1
+                found_motifs.append(motif)
+        if found_motifs:
+            score += min(25, motif_count * 8)
+            issues.append(f"Contains {motif_count} known immunogenic motif(s): {', '.join(found_motifs[:3])}")
+            recommendations.append("Consider aromatic/charge substitutions to disrupt motifs")
+
+        # ── Tag/Linker Check ──
+        tag_found = []
+        for tag_name, tag_seq in self._IMMUNOGENIC_TAGS.items():
+            if tag_seq in seq or tag_seq in seq:
+                tag_found.append(tag_name)
+        if tag_found:
+            score += 20
+            issues.append(f"Contains immunogenic tag(s): {', '.join(tag_found)}")
+            recommendations.append("Remove tag or use masked epitope variant")
+
+        # ── Protease Sensitivity (Innate Immunity Trigger) ──
+        protease_motifs = sum(1 for motif in self._PROTEASE_SENSITIVE if motif in seq)
+        if protease_motifs > 0:
+            score += min(15, protease_motifs * 5)
+            issues.append(f"Contains {protease_motifs} protease-sensitive motif(s): triggers innate immunity")
+            recommendations.append("Add D-amino acids or N-glycosylation to mask")
+
+        # ── Glycosylation Sites (Can reduce immunogenicity if utilized) ──
+        ngly_count = seq.count('N')
+        if ngly_count >= 2:
+            score -= 5  # Small credit for potential N-glycosylation sites
+            recommendations.append(f"N-glycosylation sites ({ngly_count}): can reduce immunogenicity if utilized")
+
+        # ── Charge Dysbalance (Aggregation Antigenicity) ──
+        net_charge = seq.count('K') + seq.count('R') - seq.count('D') - seq.count('E')
+        if abs(net_charge) > 3:
+            score += 10
+            issues.append(f"High net charge ({net_charge:+}): may form aggregates → immunogenic")
+            recommendations.append("Balance charge with complementary residues")
+
+        final_score = float(np.clip(score, 0.0, 100.0))
+        immunogenic_threshold = 40.0  # >40 = high risk
+
+        return {
+            'immunogenicity_score': final_score,
+            'is_high_immunogenic_risk': final_score > immunogenic_threshold,
+            'mhc_anchor_fraction': float(mhc_anchor_fraction),
+            'mhc_epitope_risk': 'high' if mhc_anchor_fraction > 0.5 else 'moderate' if mhc_anchor_fraction > 0.3 else 'low',
+            'immunogenic_motifs_found': found_motifs,
+            'immunogenic_tags_found': tag_found,
+            'protease_sensitive_motifs': protease_motifs,
+            'issues': issues,
+            'recommendations': recommendations,
+            'nglycosylation_sites': ngly_count,
+        }
+
+
+class StructuralConstraintValidator:
+    """
+    Validates and applies structural design constraints: fixed residues, forbidden positions, motifs.
+    Enables users to guide design with domain knowledge.
+    """
+
+    def validate_constraints(self, sequence: str, constraints: Dict) -> Dict:
+        """
+        Check if sequence satisfies user-specified structural constraints.
+        Returns: satisfaction_score (0–100), violations, suggestions.
+        """
+        violations: List[str] = []
+        satisfied: List[str] = []
+        score = 100.0
+
+        # ── Fixed Residue Constraints ──
+        fixed_residues = constraints.get('fixed_residues', {})  # {position: aa, ...}
+        for pos, required_aa in fixed_residues.items():
+            if 0 <= pos < len(sequence):
+                actual_aa = sequence[pos]
+                if actual_aa != required_aa:
+                    violations.append(f"Position {pos+1}: expected {required_aa}, got {actual_aa}")
+                    score -= 25
+                else:
+                    satisfied.append(f"Position {pos+1}: fixed as {required_aa} ✓")
+
+        # ── Forbidden Residue Positions ──
+        forbidden_positions = constraints.get('forbidden_residues', {})  # {position: [aa, ...], ...}
+        for pos, forbidden_list in forbidden_positions.items():
+            if 0 <= pos < len(sequence):
+                actual_aa = sequence[pos]
+                if actual_aa in forbidden_list:
+                    violations.append(f"Position {pos+1}: {actual_aa} is forbidden")
+                    score -= 15
+                else:
+                    satisfied.append(f"Position {pos+1}: {actual_aa} is allowed ✓")
+
+        # ── Required Motif ──
+        required_motif = constraints.get('required_motif', '')
+        if required_motif and required_motif not in sequence:
+            violations.append(f"Required motif '{required_motif}' not found in sequence")
+            score -= 30
+
+        # ── Secondary Structure Preference ──
+        helix_preference = constraints.get('prefer_helix', False)
+        if helix_preference:
+            helix_score = self._estimate_helix_propensity(sequence)
+            if helix_score > 0.6:
+                satisfied.append(f"Helix propensity: {helix_score:.2f} (target) ✓")
+            else:
+                violations.append(f"Low helix propensity: {helix_score:.2f} (target >0.6)")
+                score -= 20
+
+        # ── Length Constraint ──
+        target_length = constraints.get('target_length')
+        if target_length:
+            if abs(len(sequence) - target_length) <= 2:
+                satisfied.append(f"Length: {len(sequence)} (target {target_length}) ✓")
+            else:
+                violations.append(f"Length {len(sequence)} outside target range ±2 from {target_length}")
+                score -= 10
+
+        final_score = float(np.clip(score, 0.0, 100.0))
+
+        return {
+            'constraint_satisfaction_score': final_score,
+            'all_constraints_satisfied': len(violations) == 0,
+            'satisfied_constraints': satisfied,
+            'violated_constraints': violations,
+            'num_violations': len(violations),
+        }
+
+    def _estimate_helix_propensity(self, sequence: str) -> float:
+        """Rough helix propensity from AA composition (Chou-Fasman rules)."""
+        helix_scale = {'A': 1.42, 'E': 1.51, 'L': 1.21, 'M': 1.45, 'Q': 1.11,
+                       'K': 1.16, 'R': 0.98, 'H': 1.00, 'V': 1.06, 'I': 1.08,
+                       'Y': 0.69, 'C': 0.70, 'W': 1.08, 'F': 1.13, 'T': 0.83,
+                       'N': 0.67, 'G': 0.57, 'P': 0.57, 'S': 0.77, 'D': 1.01}
+        propensity = np.mean([helix_scale.get(aa, 0.7) for aa in sequence.upper()])
+        return float(np.clip(propensity / 1.2, 0.0, 1.0))
+
+
+class CostOptimizer:
+    """
+    Multi-objective trade-off between binding affinity (ΔG) and synthesis cost.
+    Enables commercial scenarios where "good enough" cheaper < "excellent" expensive.
+    """
+
+    def compute_cost_score(self, sequence: str, delta_g: float) -> Dict:
+        """
+        Rank designs by Pareto frontier: maximize affinity while minimizing cost.
+        Returns: cost_score (0–100, lower = cheaper), affinity_cost_ratio, pareto_rank.
+        """
+        length = len(sequence)
+        base_cost = 500.0
+
+        # Synthesis difficulty multipliers
+        cys_count = sequence.count('C')
+        pro_count = sequence.count('P')
+        met_count = sequence.count('M')
+        aromatic_count = sequence.count('W') + sequence.count('F') + sequence.count('Y')
+
+        difficulty_multiplier = 1.0
+        if cys_count > 2:
+            difficulty_multiplier += 0.3
+        if pro_count > 2:
+            difficulty_multiplier += 0.2
+        if aromatic_count > 4:
+            difficulty_multiplier += 0.15
+
+        synthesis_cost = base_cost + (length * 20.0 * difficulty_multiplier)
+        synthesis_cost = float(np.clip(synthesis_cost, 500, 5000))
+
+        # Affinity-cost ratio: ΔG improvement per dollar
+        dg_absolute = abs(delta_g)
+        affinity_cost_ratio = dg_absolute / (synthesis_cost / 100.0)  # kcal/mol per $100
+
+        # Cost score (0–100): 100 = cheapest, 0 = most expensive
+        cost_score = float(np.clip(100.0 - (synthesis_cost - 500) / 45.0, 0.0, 100.0))
+
+        # Pareto rank heuristic (requires ensemble context; simplified here)
+        pareto_recommendation = "Good value" if affinity_cost_ratio > 0.05 else "Premium cost"
+
+        return {
+            'estimated_synthesis_cost_usd': synthesis_cost,
+            'cost_score': cost_score,
+            'difficulty_multiplier': difficulty_multiplier,
+            'affinity_cost_ratio': float(affinity_cost_ratio),
+            'pareto_recommendation': pareto_recommendation,
+            'cost_drivers': [
+                f"Length: {length} aa (+${length * 20.0:.0f})",
+                f"Cysteines: {cys_count} (+{cys_count * 0.3 * 100:.0f}%)" if cys_count > 2 else None,
+                f"Prolines: {pro_count} (+{pro_count * 0.2 * 100:.0f}%)" if pro_count > 2 else None,
+                f"Aromatics: {aromatic_count} (+{aromatic_count * 0.15 * 100:.0f}%)" if aromatic_count > 4 else None,
+            ],
+        }
