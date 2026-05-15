@@ -36,7 +36,10 @@ class ChatResponder:
 
         if re.search(r'\bwhy\b.*\b(binding|affinity|delta|dg|kcal)\b|'
                      r'\bexplain\b.*\b(binding|affinity|score|result)\b|'
-                     r'\bbreakdown\b|\bdecompos\b', q):
+                     r'\bbreakdown\b|\bdecompos\b|'
+                     r'\bkcal\b|\bdelta[_\s]*g\b|\bdg\b|'
+                     r'\bwhat\b.*\b(binding\s+affinity|affinity|delta|energy)\b|'
+                     r'\bbinding\s+(affinity|energy|strength)\b', q):
             return self._explain_binding(current_run, session_context)
 
         if re.search(r'\bcompar\b|\bvs\b|\bversus\b|\bbetter\b|\bworse\b|'
@@ -63,6 +66,15 @@ class ChatResponder:
 
         if re.search(r'\bpk\b|\bpd\b|\bpharmaco|\bhalf.life|stability\b|circulation\b', q):
             return self._assess_pk_pd(current_run, session_context)
+
+        if re.search(r'\bimmun|\bathigen|\bepitope|\bmhc\b|\bflag\b', q):
+            return self._assess_immunogenicity(current_run, session_context)
+
+        if re.search(r'\bcost|\bprice|\bbudget|\bafford|\bcheap|\bexpensive\b', q):
+            return self._assess_cost_optimization(current_run, session_context)
+
+        if re.search(r'\bconstraint|\bfixed|\brequire|\bforbid|\bstructural\b', q):
+            return self._assess_constraint_satisfaction(current_run, session_context)
 
         return None  # no strong match; let caller handle
 
@@ -234,12 +246,18 @@ class ChatResponder:
         mutation_lines = []
         if run and run.get('mutations'):
             for m in run['mutations'][:5]:
-                f, t, pos = m.get('from', '?'), m.get('to', '?'), m.get('position', '?')
-                mutation_lines.append(f"• **{f}{pos}{t}**: {m.get('explanation', 'see physics justification')}")
+                if isinstance(m, dict):
+                    f, t, pos = m.get('from', '?'), m.get('to', '?'), m.get('position', '?')
+                    mutation_lines.append(f"• **{f}{pos}{t}**: {m.get('explanation', 'see physics justification')}")
+                elif isinstance(m, str):
+                    mutation_lines.append(f"• **{m}**")
         elif session and session.get('mutations'):
             for m in session['mutations'][:5]:
-                f, t, pos = m.get('from', '?'), m.get('to', '?'), m.get('position', '?')
-                mutation_lines.append(f"• **{f}{pos}{t}**: {m.get('explanation', 'see physics justification')}")
+                if isinstance(m, dict):
+                    f, t, pos = m.get('from', '?'), m.get('to', '?'), m.get('position', '?')
+                    mutation_lines.append(f"• **{f}{pos}{t}**: {m.get('explanation', 'see physics justification')}")
+                elif isinstance(m, str):
+                    mutation_lines.append(f"• **{m}**")
 
         if not mutation_lines:
             return (
@@ -359,6 +377,120 @@ class ChatResponder:
             f"• D-amino acid substitutions: serine protease block\n"
             f"• C-terminal 40-kDa PEGylation: 2–4 hour serum half-life target\n"
             f"• CPP fusion (TAT, poly-Arg): cellular uptake in target cells"
+        )
+
+    def _assess_immunogenicity(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle to assess immunogenicity."
+
+        immuno_score = (run or session or {}).get('immunogenicity_score', 0.0)
+        high_risk = (run or session or {}).get('is_high_immunogenic_risk', False)
+        motifs = (run or session or {}).get('immunogenic_motifs_found', [])
+        mhc_risk = (run or session or {}).get('mhc_epitope_risk', 'low')
+
+        status_emoji = "✓" if immuno_score < 30 else "⚠" if immuno_score < 60 else "✗"
+        status_text = "low" if immuno_score < 30 else "moderate" if immuno_score < 60 else "high"
+
+        return (
+            f"**Immunogenicity Risk: {immuno_score:.0f}/100** ({status_emoji} {status_text})\n\n"
+            f"**Design sequence:** `{seq}` (ΔG {dg:.1f} kcal/mol)\n\n"
+            f"**MHC epitope risk:** {mhc_risk}\n"
+            f"**Immunogenic motifs found:** {', '.join(motifs) if motifs else 'None'}\n\n"
+            f"**Interpretation:** High immunogenicity score (>60) indicates strong T-cell epitope potential "
+            f"or innate immunity triggers (toll-like receptors, protease motifs, aggregation risk).\n\n"
+            f"**Risk factors:**\n"
+            f"• MHC-binding anchors (hydrophobic K/R/W clusters)\n"
+            f"• Known immunogenic peptide motifs (LMWKY, FPWRK, etc.)\n"
+            f"• Protease-sensitive sequences (GLG, RXR patterns → activate innate immunity)\n"
+            f"• Immunogenic tags (FLAG, His-tag, HA)\n\n"
+            f"**De-risking strategies:**\n"
+            f"• Disrupt MHC anchors: substitute K/R → S/T at high-risk positions\n"
+            f"• Add N-glycosylation sites (NXS/NXT) for immune masking\n"
+            f"• Balance charge (target net +0 to +3) to reduce aggregation\n"
+            f"• Remove protease-sensitive motifs (add D-amino acids)\n"
+            f"• Humanization: replace rodent-specific motifs with human codon usage\n\n"
+            f"**Next step:** Validate with MHC-peptide binding prediction (NetMHC, MHCflurry) "
+            f"and immunology assays (T-cell activation, cytokine response)."
+        )
+
+    def _assess_cost_optimization(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle for cost analysis."
+
+        cost_usd = (run or session or {}).get('estimated_synthesis_cost_usd', 1000.0)
+        cost_score = (run or session or {}).get('cost_score', 50.0)
+        affinity_cost_ratio = (run or session or {}).get('affinity_cost_ratio', 0.0)
+        pareto_rec = (run or session or {}).get('pareto_recommendation', '')
+        lab_score = (run or session or {}).get('lab_viability_score', 0.0)
+
+        dg_absolute = abs(dg)
+        value_per_dollar = dg_absolute / (cost_usd / 1000.0) if cost_usd > 0 else 0
+
+        return (
+            f"**Cost-Affinity Trade-off Analysis**\n\n"
+            f"**Design:** `{seq}` (ΔG {dg:.1f} kcal/mol | Lab viability {lab_score:.0f}/100)\n\n"
+            f"**Estimated synthesis cost:** ${cost_usd:,.0f}\n"
+            f"**Cost efficiency score:** {cost_score:.0f}/100 (100 = cheapest)\n"
+            f"**Affinity per dollar:** {value_per_dollar:.3f} kcal/mol per $1k\n"
+            f"**Pareto recommendation:** {pareto_rec}\n\n"
+            f"**Cost drivers:**\n"
+            f"• Sequence length: +$20/aa (standard SPPS rate)\n"
+            f"• Cysteines: +30% (disulfide management)\n"
+            f"• Prolines: +20% (coupling delays)\n"
+            f"• Aromatics (W/F/Y): +15% (purification difficulty)\n\n"
+            f"**Budget scenarios:**\n"
+            f"• <$1k: Optimal for academic discovery; limited iterations\n"
+            f"• $1–2k: Commercial sweet spot; balances affinity + feasibility\n"
+            f"• >$2k: Premium affinity; consider recombinant expression for <30 aa\n\n"
+            f"**Optimization for cost:**\n"
+            f"• Replace W → Y, F → L (reduce aromatics)\n"
+            f"• Avoid Cys unless disulfide lock essential\n"
+            f"• Keep length ≤15 aa (under $800)\n"
+            f"• Replace Pro with A/G if flexibility acceptable"
+        )
+
+    def _assess_constraint_satisfaction(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle to check constraints."
+
+        constraint_score = (run or session or {}).get('constraint_satisfaction_score', 100.0)
+        all_satisfied = (run or session or {}).get('all_constraints_satisfied', True)
+        num_violations = (run or session or {}).get('num_constraint_violations', 0)
+
+        status_emoji = "✓" if all_satisfied else "⚠" if constraint_score > 50 else "✗"
+
+        return (
+            f"**Structural Constraint Satisfaction: {constraint_score:.0f}/100** ({status_emoji})\n\n"
+            f"**Design sequence:** `{seq}` (ΔG {dg:.1f} kcal/mol)\n\n"
+            f"**Constraint violations:** {num_violations}\n"
+            f"**All constraints satisfied:** {'Yes ✓' if all_satisfied else 'No — see violations below'}\n\n"
+            f"**Interpretation:** Constraint satisfaction score measures how well the design respects "
+            f"user-specified structural requirements (fixed residues, forbidden positions, motif requirements, "
+            f"secondary structure preference).\n\n"
+            f"**To add constraints for next round:**\n"
+            f"• Fixed residues: \"Keep K5 and R12 constant\"\n"
+            f"• Forbidden positions: \"No Pro in positions 3–7\"\n"
+            f"• Required motifs: \"Must contain WXXK\"\n"
+            f"• Secondary structure: \"Prefer α-helix\" or \"Require β-sheet at C-terminus\"\n"
+            f"• Length: \"Target 12–15 amino acids\"\n\n"
+            f"**Note:** Constraints guide MCMC sampling but are enforced post-design. "
+            f"If satisfied score is low, the design space may not support all constraints simultaneously; "
+            f"consider relaxing least-critical requirements."
         )
 
     # ──────────────────────────────────────────────────────────────────────

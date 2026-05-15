@@ -60,6 +60,31 @@ export interface DesignSessionContext {
   lab_viability_score?: number
   mutations_from_seed?: string[]
   rounds_summary?: Record<string, unknown>[]
+  // Synthesis / lab feasibility
+  synthesis_feasibility_score?: number
+  synthesis_feasible?: boolean
+  synthesis_issues?: string[]
+  synthesis_recommendations?: string[]
+  estimated_synthesis_time_days?: number
+  estimated_synthesis_cost_usd?: number
+  // Extended biophysics
+  selectivity_score?: number
+  problematic_off_targets?: string[]
+  escape_score?: number
+  is_escape_resistant?: boolean
+  estimated_serum_half_life_min?: number
+  bbb_penetration_feasible?: boolean
+  tissue_accumulation_risk?: boolean
+  net_charge?: number
+  immunogenicity_score?: number
+  is_high_immunogenic_risk?: boolean
+  immunogenic_motifs_found?: string[]
+  mhc_epitope_risk?: string
+  constraint_satisfaction_score?: number
+  all_constraints_satisfied?: boolean
+  cost_score?: number
+  affinity_cost_ratio?: number
+  pareto_recommendation?: string
 }
 
 export interface IterationRound {
@@ -85,6 +110,31 @@ export interface IterationRound {
   lab_viability_score?: number
   hbond_count?: number
   is_best: boolean
+  // Synthesis / lab feasibility
+  synthesis_feasibility_score?: number
+  synthesis_feasible?: boolean
+  synthesis_issues?: string[]
+  synthesis_recommendations?: string[]
+  estimated_synthesis_time_days?: number
+  estimated_synthesis_cost_usd?: number
+  // Extended biophysics
+  selectivity_score?: number
+  problematic_off_targets?: string[]
+  escape_score?: number
+  is_escape_resistant?: boolean
+  estimated_serum_half_life_min?: number
+  bbb_penetration_feasible?: boolean
+  tissue_accumulation_risk?: boolean
+  net_charge?: number
+  immunogenicity_score?: number
+  is_high_immunogenic_risk?: boolean
+  immunogenic_motifs_found?: string[]
+  mhc_epitope_risk?: string
+  constraint_satisfaction_score?: number
+  all_constraints_satisfied?: boolean
+  cost_score?: number
+  affinity_cost_ratio?: number
+  pareto_recommendation?: string
 }
 
 export interface AgentRunRequest {

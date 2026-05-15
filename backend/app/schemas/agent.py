@@ -38,6 +38,31 @@ class DesignSessionContext(BaseModel):
     lab_viability_score: Optional[float] = None
     mutations_from_seed: Optional[List[str]] = Field(None, description="Per-position diff strings e.g. ['A1V','G3K']")
     rounds_summary: Optional[List[dict]] = Field(None, description="Round-by-round metrics for progression questions")
+    # Synthesis / lab feasibility
+    synthesis_feasibility_score: Optional[float] = None
+    synthesis_feasible: Optional[bool] = None
+    synthesis_issues: Optional[List[str]] = None
+    synthesis_recommendations: Optional[List[str]] = None
+    estimated_synthesis_time_days: Optional[float] = None
+    estimated_synthesis_cost_usd: Optional[float] = None
+    # Extended biophysics / selectivity
+    selectivity_score: Optional[float] = None
+    problematic_off_targets: Optional[List[str]] = None
+    escape_score: Optional[float] = None
+    is_escape_resistant: Optional[bool] = None
+    estimated_serum_half_life_min: Optional[float] = None
+    bbb_penetration_feasible: Optional[bool] = None
+    tissue_accumulation_risk: Optional[bool] = None
+    net_charge: Optional[float] = None
+    immunogenicity_score: Optional[float] = None
+    is_high_immunogenic_risk: Optional[bool] = None
+    immunogenic_motifs_found: Optional[List[str]] = None
+    mhc_epitope_risk: Optional[str] = None
+    constraint_satisfaction_score: Optional[float] = None
+    all_constraints_satisfied: Optional[bool] = None
+    cost_score: Optional[float] = None
+    affinity_cost_ratio: Optional[float] = None
+    pareto_recommendation: Optional[str] = None
 
 
 class AgentRunRequest(BaseModel):

@@ -793,3 +793,84 @@ Website now positions Proteus as an **enterprise clinical platform**, not a rese
 ✓ Pharma/biotech partnerships (not researcher access)
 
 ---
+
+## Chat Responder Bug Fixes & Session Data Pipeline ✅ Completed
+
+### Problems Found & Fixed
+
+#### BUG-001 (CRITICAL) — Chat regex missed direct kcal/mol queries
+**File:** `backend/app/services/chat_responder.py`
+
+The `_explain_binding` regex only matched patterns starting with `why…` or `explain…`. Queries like `"What is the binding affinity in kcal/mol?"` fell through without triggering the binding handler.
+
+**Fix:** Extended the regex to directly match `\bkcal\b`, `\bdelta_g\b`, `\bbinding affinity\b`, and `\bwhat.*binding energy\b` as standalone patterns:
+```python
+if re.search(r'\bwhy\b.*\b(binding|affinity|delta|dg|kcal)\b|'
+             r'\bexplain\b.*\b(binding|affinity|score|result)\b|'
+             r'\bbreakdown\b|\bdecompos\b|'
+             r'\bkcal\b|\bdelta[_\s]*g\b|\bdg\b|'
+             r'\bwhat\b.*\b(binding\s+affinity|affinity|delta|energy)\b|'
+             r'\bbinding\s+(affinity|energy|strength)\b', q):
+```
+
+#### BUG-002 (CRITICAL) — Synthesis/feasibility chat answers always showed fallback estimates
+**Files:** `backend/app/schemas/agent.py`, `backend/app/services/agent.py`
+
+`DesignSessionContext` schema had no synthesis fields. The `session_dict` built in `agent.py` for `ChatResponder` only contained 7 fields — no synthesis, selectivity, PK/PD, immunogenicity, escape resistance, or cost data. `ChatResponder._assess_feasibility()` therefore always hit `None` fallbacks and returned generic estimated values.
+
+**Fix (backend schema):** Added 25+ new optional fields to `DesignSessionContext`:
+- Synthesis: `synthesis_feasibility_score`, `synthesis_feasible`, `synthesis_issues`, `synthesis_recommendations`, `estimated_synthesis_time_days`, `estimated_synthesis_cost_usd`
+- Selectivity: `selectivity_score`, `problematic_off_targets`
+- Escape: `escape_score`, `is_escape_resistant`
+- PK/PD: `estimated_serum_half_life_min`, `bbb_penetration_feasible`, `tissue_accumulation_risk`, `net_charge`
+- Immunogenicity: `immunogenicity_score`, `is_high_immunogenic_risk`, `immunogenic_motifs_found`, `mhc_epitope_risk`
+- Constraints: `constraint_satisfaction_score`, `all_constraints_satisfied`
+- Cost: `cost_score`, `affinity_cost_ratio`, `pareto_recommendation`
+
+**Fix (agent.py session_dict):** Expanded `session_dict` from 7 fields to 32 fields using `getattr(session, field, None)` to safely pull all new fields from the session context.
+
+#### BUG-003 (HIGH) — Mutation explanation crashed on string mutations
+**File:** `backend/app/services/chat_responder.py`
+
+`_explain_mutations` assumed mutations were dicts with `.get('from')`, `.get('to')`, `.get('position')` keys. But `mutations_from_seed` stores strings (e.g., `["A1V", "G3K"]`). Calling `.get()` on a string raises `AttributeError`.
+
+**Fix:** Added `isinstance(m, dict)` / `isinstance(m, str)` type-safe branches in both the `run` and `session` mutation loops.
+
+#### BUG-004 (HIGH) — Frontend picked wrong "best" round
+**File:** `frontend/src/pages/AgentPage.tsx`
+
+Best round was selected by sorting `binding_score` descending. The true physics optimum is the **lowest (most negative) `delta_g_binding_kcal_mol`**. A round with high `binding_score` could have a worse ΔG.
+
+**Fix:** Now uses `is_best` flag first, then falls back to sorting by `delta_g_binding_kcal_mol` ascending (most negative first), with `binding_score` as a tiebreaker:
+```ts
+const bestRound = rounds?.find((r: any) => r.is_best)
+  ?? rounds?.sort((a: any, b: any) => {
+      const dgA = a.delta_g_binding_kcal_mol ?? 0;
+      const dgB = b.delta_g_binding_kcal_mol ?? 0;
+      if (dgA !== dgB) return dgA - dgB; // most negative first
+      return (b.binding_score ?? 0) - (a.binding_score ?? 0);
+    })[0];
+```
+
+#### BUG-005 (HIGH) — Frontend DesignSessionContext type + setDesignSession missing all extended fields
+**Files:** `frontend/src/types/agent.ts`, `frontend/src/pages/AgentPage.tsx`
+
+The TypeScript `DesignSessionContext` interface was missing all 25+ synthesis/selectivity/PK/immunogenicity/cost fields. `IterationRound` was similarly sparse. Even if the backend computed and returned these values, `setDesignSession()` never populated them — so follow-up chat queries for synthesis cost, selectivity, PK, etc. always received `None` on the backend.
+
+**Fix:** Extended `DesignSessionContext` and `IterationRound` interfaces with all new fields (matching the backend schema exactly). Updated `setDesignSession()` to populate all 25+ fields from `bestRound` data.
+
+---
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `backend/app/schemas/agent.py` | Added 25+ fields to `DesignSessionContext` |
+| `backend/app/services/agent.py` | Expanded `session_dict` from 7 → 32 fields |
+| `backend/app/services/chat_responder.py` | Extended binding regex; fixed mutation type-safety |
+| `frontend/src/types/agent.ts` | Extended `DesignSessionContext` and `IterationRound` interfaces |
+| `frontend/src/pages/AgentPage.tsx` | Fixed best-round selection logic; added 25+ fields to `setDesignSession` |
+
+### Verification
+- `tsc --noEmit`: 0 errors
+- Python import check (`DesignSessionContext`, `ChatResponder`, `ProteinDesignAgent`): clean, no errors

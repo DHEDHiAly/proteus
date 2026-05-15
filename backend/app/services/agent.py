@@ -1330,6 +1330,33 @@ class ProteinDesignAgent:
                     'solubility_score': session.solubility_score,
                     'lab_viability_score': session.lab_viability_score,
                     'target_name': getattr(session, 'target_name', ''),
+                    # Synthesis / lab feasibility
+                    'synthesis_feasibility_score': getattr(session, 'synthesis_feasibility_score', None),
+                    'synthesis_feasible': getattr(session, 'synthesis_feasible', None),
+                    'synthesis_issues': getattr(session, 'synthesis_issues', None) or [],
+                    'synthesis_recommendations': getattr(session, 'synthesis_recommendations', None) or [],
+                    'estimated_synthesis_time_days': getattr(session, 'estimated_synthesis_time_days', None),
+                    'estimated_synthesis_cost_usd': getattr(session, 'estimated_synthesis_cost_usd', None),
+                    # Mutations
+                    'mutations': getattr(session, 'mutations_from_seed', None) or [],
+                    # Extended biophysics
+                    'selectivity_score': getattr(session, 'selectivity_score', None),
+                    'problematic_off_targets': getattr(session, 'problematic_off_targets', None) or [],
+                    'escape_score': getattr(session, 'escape_score', None),
+                    'is_escape_resistant': getattr(session, 'is_escape_resistant', None),
+                    'estimated_serum_half_life_min': getattr(session, 'estimated_serum_half_life_min', None),
+                    'bbb_penetration_feasible': getattr(session, 'bbb_penetration_feasible', None),
+                    'tissue_accumulation_risk': getattr(session, 'tissue_accumulation_risk', None),
+                    'net_charge': getattr(session, 'net_charge', None),
+                    'immunogenicity_score': getattr(session, 'immunogenicity_score', None),
+                    'is_high_immunogenic_risk': getattr(session, 'is_high_immunogenic_risk', None),
+                    'immunogenic_motifs_found': getattr(session, 'immunogenic_motifs_found', None) or [],
+                    'mhc_epitope_risk': getattr(session, 'mhc_epitope_risk', None),
+                    'constraint_satisfaction_score': getattr(session, 'constraint_satisfaction_score', None),
+                    'all_constraints_satisfied': getattr(session, 'all_constraints_satisfied', None),
+                    'cost_score': getattr(session, 'cost_score', None),
+                    'affinity_cost_ratio': getattr(session, 'affinity_cost_ratio', None),
+                    'pareto_recommendation': getattr(session, 'pareto_recommendation', None),
                 }
             responder_reply = self.chat_responder.respond_to_query(
                 message, current_run=None, session_context=session_dict

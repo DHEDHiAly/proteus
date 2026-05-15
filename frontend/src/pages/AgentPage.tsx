@@ -849,8 +849,16 @@ export default function AgentPage() {
 
                 // Build designSession from best round so follow-up chat is grounded in actual results
                 if (lastComplete?.data?.status === 'complete') {
-                  const bestRound = (lastComplete.data.rounds as any[])
-                    ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
+                  const rounds = lastComplete.data.rounds as any[];
+                  // Use is_best flag if available; otherwise pick the round with the lowest
+                  // (most negative) delta_g_binding_kcal_mol, falling back to highest binding_score.
+                  const bestRound = rounds?.find((r: any) => r.is_best)
+                    ?? rounds?.sort((a: any, b: any) => {
+                        const dgA = a.delta_g_binding_kcal_mol ?? 0;
+                        const dgB = b.delta_g_binding_kcal_mol ?? 0;
+                        if (dgA !== dgB) return dgA - dgB; // most negative first
+                        return (b.binding_score ?? 0) - (a.binding_score ?? 0);
+                      })[0];
                   if (bestRound) {
                     const seedSeq: string = lastComplete.data.seed || '';
                     const bestSeq: string = bestRound.sequence || '';
@@ -886,6 +894,31 @@ export default function AgentPage() {
                       lab_viability_score: bestRound.lab_viability_score,
                       mutations_from_seed: mutationsFromSeed,
                       rounds_summary: roundsSummary,
+                      // Synthesis / lab feasibility
+                      synthesis_feasibility_score: bestRound.synthesis_feasibility_score,
+                      synthesis_feasible: bestRound.synthesis_feasible,
+                      synthesis_issues: bestRound.synthesis_issues,
+                      synthesis_recommendations: bestRound.synthesis_recommendations,
+                      estimated_synthesis_time_days: bestRound.estimated_synthesis_time_days,
+                      estimated_synthesis_cost_usd: bestRound.estimated_synthesis_cost_usd,
+                      // Extended biophysics
+                      selectivity_score: bestRound.selectivity_score,
+                      problematic_off_targets: bestRound.problematic_off_targets,
+                      escape_score: bestRound.escape_score,
+                      is_escape_resistant: bestRound.is_escape_resistant,
+                      estimated_serum_half_life_min: bestRound.estimated_serum_half_life_min,
+                      bbb_penetration_feasible: bestRound.bbb_penetration_feasible,
+                      tissue_accumulation_risk: bestRound.tissue_accumulation_risk,
+                      net_charge: bestRound.net_charge,
+                      immunogenicity_score: bestRound.immunogenicity_score,
+                      is_high_immunogenic_risk: bestRound.is_high_immunogenic_risk,
+                      immunogenic_motifs_found: bestRound.immunogenic_motifs_found,
+                      mhc_epitope_risk: bestRound.mhc_epitope_risk,
+                      constraint_satisfaction_score: bestRound.constraint_satisfaction_score,
+                      all_constraints_satisfied: bestRound.all_constraints_satisfied,
+                      cost_score: bestRound.cost_score,
+                      affinity_cost_ratio: bestRound.affinity_cost_ratio,
+                      pareto_recommendation: bestRound.pareto_recommendation,
                     });
                   }
                 }
