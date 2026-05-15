@@ -622,69 +622,55 @@ Proteus is now **the only in-silico platform offering**:
 
 ---
 
-## Outstanding Work Items (as of commit 77269fc)
+## Phase 5: Chat Responder, MCMC Improvements & Streaming ✅ Completed
 
-### Not Yet Implemented
+All items below were implemented and syntax-verified in the session following commit `77269fc`.
 
-#### A. `backend/app/services/query_responder.py` — COMPLETED
-**All 11 unit tests pass** (classify_query routing, _diff_sequences, _classify_mutation, all 5 handlers, QUERY_UNKNOWN empty-string contract).
+### A. `backend/app/services/query_responder.py` ✅
+New module (364 lines). **11/11 unit tests pass.**
 
-Planned stateful chat responder module with the following spec:
+- **`AgentState` dataclass** — session snapshot: `best_sequence`, `seed_sequence`, `target_name`, `delta_g_kcal_mol`, `kd_nM`, `binding_score`, `stability_score`, `solubility_score`, `lab_viability_score`, `rounds`, `gate1/2/3_pass`
+- **`_SequenceProfile`** — computes aromatic/hydrophobic/charged/polar fractions, net charge, max hydrophobic run from actual sequence
+- **`_diff_sequences(seq_a, seq_b) -> list[str]`** — character-level alignment returning `A12K`-format mutations
+- **`_classify_mutation(from_aa, to_aa) -> str`** — biochemical characterization: charge gain/loss, hydrophobicity change, aromatic introduction, disulfide potential, etc.
+- **5 handlers** (all sequence-driven, no templates):
+  - `_respond_mechanism` — VdW/electrostatic/aromatic/H-bond decomposition from `_SequenceProfile`
+  - `_respond_mutations` — diffs seed→best, classifies each mutation biochemically
+  - `_respond_viability` — gate status + recommendation (≥70 proceed, 50–70 borderline, <50 optimize)
+  - `_respond_improve` — targeted suggestions based on charge, aromatic content, hydrophobicity, cyclization potential
+  - `_respond_synthesis` — SPPS issues (Cys, Met, Asn deamidation, N-terminal Gln, adjacent aromatics, Pro count), cost/timeline estimate
+- **Public API**: `classify_query(query) -> str`, `respond_to_query(query_type, state) -> str`, `handle_query(query, state) -> tuple[str, str]`
 
-**Module-level constants:**
-- `QUERY_MECHANISM`, `QUERY_MUTATIONS`, `QUERY_VIABILITY`, `QUERY_IMPROVE`, `QUERY_SYNTHESIS`, `QUERY_UNKNOWN`
+### B. Replica Exchange (Parallel Tempering) wired — `backend/app/core/mcmc.py` ✅
+- `_swap_chains` signature updated: now takes `temperatures: List[float]` instead of `List[ChainResult]`
+- New `_run_chain_epoch(sequence, chain_index, temperature, target_name, num_steps, best_sequence, best_energy, step_offset) -> dict` method runs a fixed epoch of steps and returns updated state
+- `run()` refactored to epoch loop: `num_epochs = steps_per_chain // swap_interval`; all chains run in parallel each epoch via `ThreadPoolExecutor`; `_swap_chains` called between epochs (replica exchange now active)
+- `epoch_complete` progress event fires after each epoch; `swap_count` included in final `complete` payload
 
-**`AgentState` dataclass:**
-```
-best_sequence, seed_sequence, target_name,
-delta_g_kcal_mol, kd_nM, binding_score,
-stability_score, solubility_score, lab_viability_score,
-rounds, gate1_pass, gate2_pass, gate3_pass
-```
+### C. `ChainResult.converged` — fixed ✅
+- Previously always `False` (set at init, never updated)
+- Now computed per-chain: variance of second half of energy trace < 10% of variance of first half → `converged = True`
+- `MCMCRunResult.converged` was already correct (R-hat + ESS check); this is the complementary per-chain diagnostic
 
-**Public API:**
-- `classify_query(query: str) -> str` — regex match against `(QUERY_TYPE, re.Pattern)` list; first match wins; fallback `QUERY_UNKNOWN`
-- `respond_to_query(query_type: str, state: AgentState) -> str` — delegates to 5 handler functions
-- `handle_query(query: str, state: AgentState) -> tuple[str, str]` — classify then respond; returns `(query_type, response)`
+### D. SSE Streaming Endpoint — `backend/app/api/agent.py` ✅
+New route `POST /agent/design/stream`:
+- Returns `StreamingResponse(media_type="text/event-stream")`
+- `asyncio.Queue` + `loop.run_in_executor` bridges sync `agent.run()` with async SSE generator
+- `_progress_callback` pushes MCMC events into queue via `asyncio.run_coroutine_threadsafe`
+- Events emitted: `progress`, `epoch_complete`, `round_complete`, `complete` (full result dict), `error`
+- `stream_callback` optional param threaded through `agent.run()` → `_run_mcmc_round()` → `MCMCParallelSampler(progress_callback=...)`
+- `X-Accel-Buffering: no` header prevents nginx buffering
 
-**5 handler functions (all analyze actual sequence, no templates):**
-- `_respond_mechanism(state)` — explains binding mechanism from `_SequenceProfile` residue composition (aromatic, hydrophobic, charged, polar fractions; runs; net charge)
-- `_respond_mutations(state)` — calls `_diff_sequences(seed, best)` to list point mutations in `{A12K}` format; calls `_classify_mutation(from_aa, to_aa)` for biochemical characterization
-- `_respond_viability(state)` — assesses lab viability using `lab_viability_score` thresholds (≥70 → proceed to SPPS, 50-70 → borderline, <50 → optimize)
-- `_respond_improve(state)` — suggests improvements based on sequence profile and current metrics
-- `_respond_synthesis(state)` — SPPS feasibility from composition (Cys, Pro, aromatic adjacency)
+### E. ESMFold Integration — `backend/app/services/agent.py` ✅
+- `_call_esmfold(sequence: str) -> Optional[str]` helper: `POST https://api.esmatlas.com/foldSequence/v1/pdb/` with plain-text body; 60s timeout; skips sequences > 400 AA; returns PDB string on `ATOM`-prefixed response, else `None` with warning log
+- Called after all 3 MCMC rounds on `best_round["sequence"]`
+- `pdb_string: Optional[str] = None` added to `AgentRunResponse` schema (`backend/app/schemas/agent.py`)
+- PDB returned in `AgentRunResponse.pdb_string` — frontend can pass directly to `PDBeViewer`
 
-**Helper functions:**
-- `_SequenceProfile` dataclass: computes aromatic/hydrophobic/charged/polar residue lists, runs, net charge, fractions from actual sequence
-- `_diff_sequences(seq_a, seq_b) -> list[str]`: character-level alignment returning `"A12K"` format; parse with `m[0]`, `m[1:-1]`, `m[-1]`; use `re.match(r'^[A-Z]\d+[A-Z]$', m)` for point mutation detection
-- `_classify_mutation(from_aa, to_aa) -> str`: biochemical characterization (charge gain/loss, hydrophobicity change, aromatic introduction, etc.)
-
-**ΔG thresholds:** ≤−9 strong binder; ≤−7 good; ≤−6 promising/lab-ordering threshold; >−6 weak
-**Kd thresholds:** <1 nM ultra-high; <10 drug-like; <100 high affinity; <1000 moderate; else weak
-
-#### B. Replica Exchange (Parallel Tempering) — `_swap_chains()` NOT WIRED
-`_swap_chains()` is fully implemented in `mcmc.py` (lines 174-185) with correct Metropolis-Hastings swap criterion:
-```
-log_swap_prob = (E_i - E_j) * (beta_i - beta_j)
-accept if random() < exp(min(log_swap_prob, 0))
-```
-However, it is never called. The current `run()` dispatches all chains to `ThreadPoolExecutor` and each runs to completion independently. To wire replica exchange, the inner MCMC loop would need to be restructured into epochs with inter-chain swaps between epochs. This requires refactoring `_run_single_chain` to run `swap_interval` steps at a time rather than all steps at once.
-
-#### C. `ChainResult.converged` always `False`
-`MCMCRunResult.converged` IS correctly computed (R-hat < `gelman_rubin_threshold` AND ESS ≥ `min_effective_samples`, lines 265-266). However, individual `ChainResult.converged` is initialized to `False` and never updated. This is low-priority since the important convergence diagnostic is on `MCMCRunResult`.
-
-#### D. Streaming SSE Endpoint — NOT IMPLEMENTED
-Planned:
-- `stream_callback` optional param in `agent.run()`, injected at each MCMC step via `messages.append()` equivalent
-- `asyncio.Queue` + `run_in_executor` approach for SSE
-- New route `POST /agent/design/stream` returning `EventSourceResponse`
-- Frontend `handleSend` Tier 1 updated to consume SSE stream instead of waiting for full response
-
-#### E. ESMFold Integration — NOT IMPLEMENTED
-Planned:
-- Call `POST https://api.esmatlas.com/foldSequence/v1/pdb/` (free, no install) with best sequence as plain text body after MCMC completes in `agent.py`
-- Store PDB string in run result
-- Render in `PDBeViewer` component on RunDetailPage
+### Verification
+- All 5 modified files pass `ast.parse` (no syntax errors)
+- `query_responder.py`: 11/11 unit tests pass
+- `mcmc.py`: functional test with 3-chain, 60-step, 20-step-epoch sampler — 3 `epoch_complete` events, correct R-hat, `ChainResult.converged` computed
 
 ---
 

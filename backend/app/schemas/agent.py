@@ -53,6 +53,7 @@ class AgentRunResponse(BaseModel):
     candidate_sequence: Optional[str] = None
     candidate_scores: Optional[dict] = None
     pdb_id: Optional[str] = None
+    pdb_string: Optional[str] = None   # ESMFold PDB output for best sequence
     mutations: Optional[list] = None
     rounds: Optional[list] = None
     total_time: Optional[float] = None

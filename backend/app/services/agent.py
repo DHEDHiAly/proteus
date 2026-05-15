@@ -14,7 +14,8 @@ from app.core.proposal import ProposalDistribution
 from app.core.esm2 import ESM2EmbeddingCache
 from app.core.docking_oracle import (
     DockingOracle, LabFeasibilityScorer,
-    TargetSelectivityScorer, ResistanceEscapePredictor, EnhancedPKPredictor
+    TargetSelectivityScorer, ResistanceEscapePredictor, EnhancedPKPredictor,
+    ImmunogenicityScreener, StructuralConstraintValidator, CostOptimizer
 )
 from app.schemas.agent import PatientInfo, AgentMessage, AgentRunResponse, DesignSessionContext
 from app.api.targets import load_targets_metadata
@@ -22,6 +23,39 @@ from app.services.chat_responder import ChatResponder
 from app.services.context_aware_responder import ContextAwareChatResponder
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# ESMFold structure prediction (free public API, no installation required)
+# ---------------------------------------------------------------------------
+
+_ESMFOLD_URL = "https://api.esmatlas.com/foldSequence/v1/pdb/"
+_ESMFOLD_TIMEOUT = 60  # seconds; ESMFold can be slow on long sequences
+
+
+def _call_esmfold(sequence: str) -> Optional[str]:
+    """POST sequence to ESMFold and return PDB string, or None on failure.
+
+    Sequences longer than 400 AA are skipped (API limit and response time).
+    """
+    if not sequence or len(sequence) > 400:
+        logger.info("ESMFold skipped: sequence length %d", len(sequence) if sequence else 0)
+        return None
+    try:
+        resp = httpx.post(
+            _ESMFOLD_URL,
+            content=sequence,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=_ESMFOLD_TIMEOUT,
+        )
+        if resp.status_code == 200 and resp.text.strip().startswith("ATOM"):
+            logger.info("ESMFold returned PDB for sequence length %d", len(sequence))
+            return resp.text
+        logger.warning("ESMFold unexpected response %d: %.120s", resp.status_code, resp.text)
+        return None
+    except Exception as exc:
+        logger.warning("ESMFold call failed: %s", exc)
+        return None
 
 CANCER_TARGET_MAP = {
     # EGFRvIII — glioblastoma
@@ -971,7 +1005,8 @@ class ProteinDesignAgent:
     def _run_mcmc_round(self, seed: str, target_name: str, target_meta: dict,
                         steps: int = 600, num_chains: int = 3,
                         constraints: Optional[Dict] = None,
-                        pdb_id: str = "") -> dict:
+                        pdb_id: str = "",
+                        stream_callback: Optional[callable] = None) -> dict:
         oracle = EnergyOracle()
         pocket = target_meta.get("binding_site_residues", [])
         if pocket:
@@ -995,6 +1030,7 @@ class ProteinDesignAgent:
             num_chains=num_chains,
             temperatures=temps,
             steps_per_chain=steps,
+            progress_callback=stream_callback,
         )
 
         result = sampler.run(seed, target_name)
@@ -1017,10 +1053,14 @@ class ProteinDesignAgent:
         selectivity_scorer = TargetSelectivityScorer(oracle.docking_oracle)
         escape_predictor = ResistanceEscapePredictor(oracle.docking_oracle)
         pk_predictor = EnhancedPKPredictor()
+        immunogenicity_screener = ImmunogenicityScreener()
+        constraint_validator = StructuralConstraintValidator()
+        cost_optimizer = CostOptimizer()
 
         top_ensemble = []
         for i, candidate in enumerate(candidates[:10]):  # Top-10 ensemble
             seq = candidate.get("sequence", "")
+            dg = candidate.get("delta_g_binding_kcal_mol", -5.5)
 
             # Selectivity assessment
             selectivity_result = selectivity_scorer.assess_selectivity(seq, target_name)
@@ -1031,11 +1071,20 @@ class ProteinDesignAgent:
             # Enhanced PK prediction
             pk_result = pk_predictor.predict_pk(seq)
 
+            # Immunogenicity screening (NEW)
+            immuno_result = immunogenicity_screener.screen_immunogenicity(seq)
+
+            # Constraint satisfaction (NEW)
+            constraint_result = constraint_validator.validate_constraints(seq, constraints or {})
+
+            # Cost optimization (NEW)
+            cost_result = cost_optimizer.compute_cost_score(seq, dg)
+
             ensemble_item = {
                 "rank": i + 1,
                 "sequence": seq,
                 "binding_score": candidate.get("binding_score", 0),
-                "delta_g_binding_kcal_mol": candidate.get("delta_g_binding_kcal_mol", 0.0),
+                "delta_g_binding_kcal_mol": dg,
                 "synthesis_feasibility_score": candidate.get("synthesis_feasibility_score", 0.0),
                 "lab_viability_score": candidate.get("lab_viability_score", 0.0),
                 # Selectivity metrics
@@ -1049,6 +1098,20 @@ class ProteinDesignAgent:
                 "estimated_serum_half_life_min": pk_result.get("estimated_serum_half_life_min", 20.0),
                 "bbb_penetration_feasible": pk_result.get("bbb_penetration_feasible", False),
                 "tissue_accumulation_risk": pk_result.get("tissue_accumulation_risk", False),
+                # Immunogenicity metrics (NEW)
+                "immunogenicity_score": immuno_result.get("immunogenicity_score", 0.0),
+                "is_high_immunogenic_risk": immuno_result.get("is_high_immunogenic_risk", False),
+                "immunogenic_motifs_found": immuno_result.get("immunogenic_motifs_found", []),
+                "mhc_epitope_risk": immuno_result.get("mhc_epitope_risk", "low"),
+                # Constraint satisfaction (NEW)
+                "constraint_satisfaction_score": constraint_result.get("constraint_satisfaction_score", 100.0),
+                "all_constraints_satisfied": constraint_result.get("all_constraints_satisfied", True),
+                "num_constraint_violations": constraint_result.get("num_violations", 0),
+                # Cost optimization (NEW)
+                "estimated_synthesis_cost_usd": cost_result.get("estimated_synthesis_cost_usd", 1000.0),
+                "cost_score": cost_result.get("cost_score", 50.0),
+                "affinity_cost_ratio": cost_result.get("affinity_cost_ratio", 0.0),
+                "pareto_recommendation": cost_result.get("pareto_recommendation", ""),
             }
             top_ensemble.append(ensemble_item)
 
@@ -1187,6 +1250,19 @@ class ProteinDesignAgent:
             "estimated_serum_half_life_min": best_with_ensemble.get("estimated_serum_half_life_min", 20.0),
             "bbb_penetration_feasible": best_with_ensemble.get("bbb_penetration_feasible", False),
             "tissue_accumulation_risk": best_with_ensemble.get("tissue_accumulation_risk", False),
+            # Immunogenicity (NEW)
+            "immunogenicity_score": best_with_ensemble.get("immunogenicity_score", 0.0),
+            "is_high_immunogenic_risk": best_with_ensemble.get("is_high_immunogenic_risk", False),
+            "immunogenic_motifs_found": best_with_ensemble.get("immunogenic_motifs_found", []),
+            "mhc_epitope_risk": best_with_ensemble.get("mhc_epitope_risk", "low"),
+            # Constraint satisfaction (NEW)
+            "constraint_satisfaction_score": best_with_ensemble.get("constraint_satisfaction_score", 100.0),
+            "all_constraints_satisfied": best_with_ensemble.get("all_constraints_satisfied", True),
+            # Cost optimization (NEW)
+            "estimated_synthesis_cost_usd": best_with_ensemble.get("estimated_synthesis_cost_usd", 1000.0),
+            "cost_score": best_with_ensemble.get("cost_score", 50.0),
+            "affinity_cost_ratio": best_with_ensemble.get("affinity_cost_ratio", 0.0),
+            "pareto_recommendation": best_with_ensemble.get("pareto_recommendation", ""),
             # Top-10 ensemble (NEW)
             "top_ensemble": top_ensemble,
             # Agent-level outputs
@@ -1211,6 +1287,7 @@ class ProteinDesignAgent:
         patient: PatientInfo,
         message: str,
         session: Optional[DesignSessionContext] = None,
+        stream_callback: Optional[callable] = None,
     ) -> AgentRunResponse:
         messages: List[AgentMessage] = [AgentMessage(role="user", content=message)]
 
@@ -1401,7 +1478,8 @@ class ProteinDesignAgent:
 
             design = self._run_mcmc_round(
                 current_seed, target_name, target_meta, steps, chains, constraints,
-                pdb_id=pdb_id
+                pdb_id=pdb_id,
+                stream_callback=stream_callback,
             )
             design["round"] = round_num
             rounds_data.append(design)
@@ -1769,6 +1847,7 @@ class ProteinDesignAgent:
                 "delta_g_binding_kcal_mol": best_round.get("delta_g_binding_kcal_mol", 0.0),
             },
             pdb_id=pdb_id,
+            pdb_string=_call_esmfold(best_round["sequence"]),
             mutations=best_round["mutations"],
             rounds=[r["round"] for r in rounds_data],
             total_time=round(total_time, 1),
