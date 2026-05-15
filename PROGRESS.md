@@ -159,42 +159,47 @@ All implemented modules passed verification:
 
 ---
 
-## Session `respond_grounded` — Grounded Catch-All (commit after a2115cc)
+## Session chat routing overhaul — grounded-first when session exists (commit after 82ca52b)
 
 ### Problem
-Free-form questions about the current designed peptide (e.g. "what is the score in kcal/mol",
-"how good is the binding?", "show me the metrics") reached `_conversational_fallback_rich` and
-returned a generic message with no actual metric data, because none of the specific pattern
-matchers in `_answer_question`, `context_aware_responder.respond`, or `chat_responder.respond_to_query`
-matched them.
+Three bugs caused session-specific questions to return generic answers instead of actual metric data:
 
-### Fix: `respond_grounded` in `ContextAwareChatResponder`
+1. **Frontend intercept**: `QA_PAIRS` in `AgentPage.tsx` had an entry matching `score[s]? in kcal|current score|...` that returned a generic "Available scores after a design run" locally, before the message ever reached the backend. So the backend's session-aware `respond_grounded` was never called.
 
-**File:** `backend/app/services/context_aware_responder.py`
+2. **Wrong ordering in `run()`**: `_answer_question()` (static QA) fired **before** `respond_grounded()`. The static QA patterns for `what.*\bbinding\s+score\b` matched "what is the binding score" and returned generic explanation even when session data was available.
 
-- Added `_GROUNDED_SCORE_PATTERNS` (30 broad regex patterns) covering:
-  - Any mention of `kcal`, `score`, `metric`, `result`, `value`, `kd`, `delta_g`, `stability`, etc.
-  - "How good/strong/tight is…", "summarize", "overview", "current candidate", etc.
-- Added `respond_grounded(message, session)` method:
-  - Returns `None` if no session or no `best_sequence`
-  - Returns `_full_session_summary(session)` on any score/metric keyword match
-  - Also returns summary for any question-looking message (? or interrogative starters) when session exists
-- Added `_full_session_summary(session)` method:
-  - Rich Markdown block: ΔG, Kd, Stability, Solubility, Lab Viability with interpretations
-  - ΔG↔Kd relationship note, in-silico caveat, next-action hints
+3. **`respond_grounded` too broad**: The fallback section fired for ANY question-like message (any `?`, any "what/how/why" starter) when session existed. So "what is MCMC?" would return a session metric dump instead of the MCMC education answer.
 
-**File:** `backend/app/services/agent.py`
+### Fixes
 
-- Wired `respond_grounded` into `run()` after `chat_responder.respond_to_query`, before Ollama
-- Added new `_QA_PAIRS` entry for score/metric questions when no session exists (explains all
-  available scores and prompts user to run a design cycle)
+**`frontend/src/pages/AgentPage.tsx`**
+- Removed the score/metric `QA_PAIRS` entry entirely. Any message referencing scores/metrics now goes to the backend so session context is available.
 
-**File:** `frontend/src/pages/AgentPage.tsx`
+**`backend/app/services/agent.py` — `run()` ordering**
+- Restructured non-design path: when `session.best_sequence` is present, `respond_grounded` is now called **first**, before `_answer_question`. Order is:
+  1. `respond_grounded` (if session exists) — session-specific scores
+  2. `_answer_question` — generic biophysics education (MCMC, ΔG definition, Kd, etc.)
+  3. `context_aware_responder.respond` — specific builders (mechanism, mutations, viability)
+  4. `chat_responder.respond_to_query` — data-driven responder
+  5. Ollama / `_conversational_fallback_rich`
 
-- Added new `QA_PAIRS` entry for score/metric questions (frontend local answer)
+**`backend/app/services/context_aware_responder.py` — `respond_grounded`**
+- Removed the broad question-starters fallback (the `has_qmark / is_starter / is_interrogative` block). `respond_grounded` now fires **only** on explicit `_GROUNDED_SCORE_PATTERNS` keyword matches.
+- This means "what is MCMC?" → grounded returns `None` → static QA returns MCMC explanation. ✓
+- "what is the score?" → grounded matches `\bscore[s]?\b` → returns actual session summary. ✓
+- Rewrote docstring to reflect the precision-catch (not broad catch-all) design.
+
+### Routing matrix (verified end-to-end)
+
+| Message | Session | Result |
+|---|---|---|
+| "what is the score in kcal/mol" | exists | grounded: actual ΔG, Kd, Stability, Solubility, Lab Viability |
+| "what is the binding score" | exists | grounded: session summary |
+| "what is MCMC" | exists | static QA: MCMC education answer |
+| "what is the score in kcal/mol" | none | static QA: "run a design cycle to populate scores" |
 
 ### Verification
-- `py_compile`: clean on both `context_aware_responder.py` and `agent.py`
+- `py_compile`: clean on `agent.py` and `context_aware_responder.py`
 - 9/9 regression tests pass (`tests/test_agent_conversation.py`)
-- Smoke tests: "what is the score in kcal/mol" → full metric summary; "design a peptide" → None
-  (does not intercept design commands); no-session queries → None
+- `respond_grounded` precision smoke test: 9/9 keyword routing correct, no-session guard holds
+- End-to-end `agent.run()` smoke test: all four routing cases verified above

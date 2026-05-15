@@ -509,33 +509,33 @@ class ContextAwareChatResponder:
         session: Optional[DesignSessionContext],
     ) -> Optional[str]:
         """
-        Broad catch-all for metric / score / general questions about the current
-        candidate. Only activates when a session with a lead sequence is present.
+        Precision catch for score / metric questions about the current candidate.
+        Only activates when a session with a lead sequence is present AND the
+        message contains an explicit score / metric keyword from
+        _GROUNDED_SCORE_PATTERNS.
 
-        Priority hierarchy (all higher-priority handlers have already been called):
-          _answer_question → context_aware_responder.respond → chat_responder → (here)
+        Intentionally does NOT fire on general conceptual questions ("what is
+        MCMC?", "how does Proteus work?") — those are handled by the static QA
+        layer so the user gets a focused educational answer rather than a session
+        dump every time they ask about a concept.
 
-        Returns None only when:
+        Priority: called BEFORE _answer_question when session exists, so session
+        data takes precedence over generic static answers for score questions.
+
+        Returns None when:
         - No session / no best_sequence, OR
-        - Message does not look like a question at all (e.g. greetings, commands)
+        - No explicit score / metric keyword found in the message
         """
         if not session or not session.best_sequence:
             return None
 
         text = message.lower().strip()
 
-        # 1. Explicit score / metric keyword → immediate summary
+        # Fire only on explicit score / metric / result keyword — keeps conceptual
+        # questions ("what is ΔG?", "what is MCMC?") routed to static QA.
         for pattern in _GROUNDED_SCORE_PATTERNS:
             if re.search(pattern, text):
                 return self._full_session_summary(session)
-
-        # 2. Any question-looking message when session is present
-        has_qmark = bool(_GROUNDED_QUESTION_MARK_RE.search(text))
-        is_starter = any(text.startswith(s) for s in _GROUNDED_QUESTION_STARTERS)
-        is_interrogative = bool(re.match(r"^\s*(how|what|why|when|where|who)\s+\w+", text))
-
-        if has_qmark or is_starter or is_interrogative:
-            return self._full_session_summary(session)
 
         return None
 

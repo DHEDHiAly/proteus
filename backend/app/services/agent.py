@@ -1116,18 +1116,31 @@ class ProteinDesignAgent:
         explicit_design = _is_design_request(message)
 
         if not explicit_design:
+            # (1) When a session with results is present, try the grounded responder
+            #     FIRST so score / metric questions get actual session data instead
+            #     of the generic static-QA answers that fire next.
+            if session and session.best_sequence:
+                grounded_reply = self.context_aware_responder.respond_grounded(message, session)
+                if grounded_reply is not None:
+                    messages.append(AgentMessage(role="agent", content=grounded_reply))
+                    return AgentRunResponse(reply=grounded_reply, messages=messages)
+
+            # (2) Static QA: generic biophysics education (ΔG definition, MCMC,
+            #     Kd, Triple-Gate, etc.) — only reached when grounded returned None
+            #     or there is no active session.
             answer = _answer_question(message)
             if answer is not None:
                 messages.append(AgentMessage(role="agent", content=answer))
                 return AgentRunResponse(reply=answer, messages=messages)
 
-            # Try context-aware responder (session-specific: mechanism, mutations, viability, improvement, progression)
+            # (3) Session-specific builders: mechanism, mutations, viability,
+            #     improvement, progression — more targeted than grounded summary.
             ctx_reply = self.context_aware_responder.respond(message, session)
             if ctx_reply is not None:
                 messages.append(AgentMessage(role="agent", content=ctx_reply))
                 return AgentRunResponse(reply=ctx_reply, messages=messages)
 
-            # Try data-driven ChatResponder when session has run results
+            # (4) Data-driven ChatResponder when session has run results.
             session_dict = None
             if session and session.best_sequence:
                 session_dict = {
@@ -1145,14 +1158,6 @@ class ProteinDesignAgent:
             if responder_reply is not None:
                 messages.append(AgentMessage(role="agent", content=responder_reply))
                 return AgentRunResponse(reply=responder_reply, messages=messages)
-
-            # Grounded catch-all: answers ANY score / metric / general question using
-            # actual session data (ΔG, Kd, stability, solubility, lab viability).
-            # Must be tried after the specific responders so they still get priority.
-            grounded_reply = self.context_aware_responder.respond_grounded(message, session)
-            if grounded_reply is not None:
-                messages.append(AgentMessage(role="agent", content=grounded_reply))
-                return AgentRunResponse(reply=grounded_reply, messages=messages)
 
             clinical = _clinical_context_lines(patient)
             sess = _format_session_block(session)
