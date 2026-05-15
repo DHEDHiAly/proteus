@@ -12,8 +12,11 @@ from app.core.mcmc import MCMCParallelSampler
 from app.core.energy import EnergyOracle
 from app.core.proposal import ProposalDistribution
 from app.core.esm2 import ESM2EmbeddingCache
+from app.core.docking_oracle import DockingOracle, LabFeasibilityScorer
 from app.schemas.agent import PatientInfo, AgentMessage, AgentRunResponse, DesignSessionContext
 from app.api.targets import load_targets_metadata
+from app.services.chat_responder import ChatResponder
+from app.services.context_aware_responder import ContextAwareChatResponder
 
 logger = logging.getLogger(__name__)
 
@@ -704,7 +707,7 @@ def _conversational_fallback_rich(
             base
             + "\n\n**Using your current lead peptide**\n"
             + _format_session_block(session)
-            + "\n\nOllama is not running locally — start it with `ollama serve` for free-form AI answers."
+            + "\n\nor install Ollama (https://ollama.com) with a small chat model for longer free-form answers."
         )
     return (
         base
@@ -889,6 +892,8 @@ class ProteinDesignAgent:
     def __init__(self):
         self.esm_cache = ESM2EmbeddingCache(settings.ESM_CACHE_DIR)
         self.targets = load_targets_metadata()
+        self.chat_responder = ChatResponder()
+        self.context_aware_responder = ContextAwareChatResponder()
 
     def _resolve_target(self, patient: PatientInfo) -> Optional[Tuple[str, str]]:
         text = (patient.cancer_type + " " + (patient.tumor_markers or "")).lower()
@@ -914,6 +919,13 @@ class ProteinDesignAgent:
             oracle.set_target_pocket(pocket)
         if constraints:
             _apply_constraints_to_oracle(oracle, constraints)
+
+        # Attach physics-based docking oracle for binding energy
+        oracle.docking_oracle = DockingOracle(
+            target_pdb_id=pdb_id,
+            binding_site_residues=pocket,
+        )
+        oracle.feasibility_scorer = LabFeasibilityScorer()
 
         proposal = ProposalDistribution(self.esm_cache._cache)
         temps = [0.5, 1.0, 2.0, 5.0, 10.0][:num_chains]
@@ -1055,6 +1067,13 @@ class ProteinDesignAgent:
             "gate3_pass": best.get("gate3_pass", False),
             "lab_viability_score": best.get("lab_viability_score", 0.0),
             "selectivity_ddg": best.get("selectivity_ddg", 0.0),
+            # Synthesis + delivery feasibility (from LabFeasibilityScorer)
+            "synthesis_feasibility_score": best.get("synthesis_feasibility_score", 0.0),
+            "synthesis_feasible": best.get("synthesis_feasible", False),
+            "synthesis_issues": best.get("synthesis_issues", []),
+            "synthesis_recommendations": best.get("synthesis_recommendations", []),
+            "estimated_synthesis_time_days": best.get("estimated_synthesis_time_days"),
+            "estimated_synthesis_cost_usd": best.get("estimated_synthesis_cost_usd"),
             # Agent-level outputs
             "solubility_tags": _suggest_solubility_tags(best.get("sequence", "")),
             "notes_3d": _generate_3d_notes(
@@ -1088,6 +1107,31 @@ class ProteinDesignAgent:
             if answer is not None:
                 messages.append(AgentMessage(role="agent", content=answer))
                 return AgentRunResponse(reply=answer, messages=messages)
+
+            # Try context-aware responder (session-specific: mechanism, mutations, viability, improvement, progression)
+            ctx_reply = self.context_aware_responder.respond(message, session)
+            if ctx_reply is not None:
+                messages.append(AgentMessage(role="agent", content=ctx_reply))
+                return AgentRunResponse(reply=ctx_reply, messages=messages)
+
+            # Try data-driven ChatResponder when session has run results
+            session_dict = None
+            if session and session.best_sequence:
+                session_dict = {
+                    'best_sequence': session.best_sequence,
+                    'delta_g_kcal_mol': session.delta_g_kcal_mol,
+                    'kd_nM': session.kd_nM,
+                    'stability_score': session.stability_score,
+                    'solubility_score': session.solubility_score,
+                    'lab_viability_score': session.lab_viability_score,
+                    'target_name': getattr(session, 'target_name', ''),
+                }
+            responder_reply = self.chat_responder.respond_to_query(
+                message, current_run=None, session_context=session_dict
+            )
+            if responder_reply is not None:
+                messages.append(AgentMessage(role="agent", content=responder_reply))
+                return AgentRunResponse(reply=responder_reply, messages=messages)
 
             clinical = _clinical_context_lines(patient)
             sess = _format_session_block(session)

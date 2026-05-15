@@ -440,7 +440,7 @@ export default function AgentPage() {
   const [designTarget, setDesignTarget] = useState('');
   const [comparisonMode, setComparisonMode] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
-  const [designSession, setDesignSession] = useState<DesignSessionContext | undefined>();
+  const [designSession, setDesignSession] = useState<DesignSessionContext | undefined>(undefined);
 
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -544,24 +544,6 @@ export default function AgentPage() {
         setDesignRounds(roundData);
         setDesignTime(totalTime);
         setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
-
-        // Update session context so follow-up chat has the current peptide metrics
-        if (lastComplete?.data?.rounds?.length) {
-          const best = [...lastComplete.data.rounds].sort((a: any, b: any) => b.binding_score - a.binding_score)[0] as any;
-          setDesignSession({
-            target_name: lastComplete.data.target || patient?.tumor_markers || patient?.cancer_type,
-            pdb_id: lastComplete.data.pdb_id,
-            best_sequence: best?.sequence,
-            seed_sequence: lastComplete.data.seed,
-            binding_score: best?.binding_score,
-            delta_g_kcal_mol: best?.delta_g_binding_kcal_mol,
-            kd_nM: best?.kd_nM,
-            stability_score: best?.stability_score,
-            solubility_score: best?.solubility_score,
-            total_energy: best?.total_energy,
-            lab_viability_score: best?.lab_viability_score,
-          });
-        }
       }
 
       if (res.data.candidate_sequence) {
@@ -584,6 +566,49 @@ export default function AgentPage() {
           setActiveViewerPdb(last.data.pdb_id);
           setActiveViewerMuts(res.data.mutations || []);
           setSeed(last.data.seed || res.data.candidate_sequence);
+        }
+
+        // Build designSession from best round so follow-up chat is grounded in actual results
+        if (lastComplete?.data?.status === 'complete') {
+          const bestRound = (lastComplete.data.rounds as any[])
+            ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
+          if (bestRound) {
+            const seedSeq: string = lastComplete.data.seed || '';
+            const bestSeq: string = bestRound.sequence || '';
+            const mutationsFromSeed: string[] = [];
+            for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
+              if (seedSeq[i] !== bestSeq[i]) {
+                mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
+              }
+            }
+            if (bestSeq.length !== seedSeq.length && seedSeq) {
+              mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
+            }
+            const roundsSummary = (lastComplete.data.rounds as any[])?.map((r: any) => ({
+              round: r.round,
+              sequence: r.sequence,
+              binding_score: r.binding_score,
+              delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+              kd_nM: r.kd_nM,
+              lab_viability_score: r.lab_viability_score,
+              is_best: r.is_best,
+            })) || [];
+            setDesignSession({
+              target_name: lastComplete.data.target || patient?.cancer_type || '',
+              pdb_id: lastComplete.data.pdb_id || '',
+              best_sequence: bestSeq,
+              seed_sequence: seedSeq,
+              binding_score: bestRound.binding_score,
+              delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
+              kd_nM: bestRound.kd_nM,
+              stability_score: bestRound.stability_score,
+              solubility_score: bestRound.solubility_score,
+              total_energy: bestRound.total_energy,
+              lab_viability_score: bestRound.lab_viability_score,
+              mutations_from_seed: mutationsFromSeed,
+              rounds_summary: roundsSummary,
+            });
+          }
         }
       }
     } catch (err: any) {

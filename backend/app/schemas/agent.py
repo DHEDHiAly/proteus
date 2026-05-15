@@ -36,6 +36,8 @@ class DesignSessionContext(BaseModel):
     solubility_score: Optional[float] = None
     total_energy: Optional[float] = None
     lab_viability_score: Optional[float] = None
+    mutations_from_seed: Optional[List[str]] = Field(None, description="Per-position diff strings e.g. ['A1V','G3K']")
+    rounds_summary: Optional[List[dict]] = Field(None, description="Round-by-round metrics for progression questions")
 
 
 class AgentRunRequest(BaseModel):

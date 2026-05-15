@@ -1,6 +1,8 @@
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from app.core.docking_oracle import DockingOracle, LabFeasibilityScorer
 
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 AA_INDEX = {aa: i for i, aa in enumerate(AMINO_ACIDS)}
@@ -65,6 +67,9 @@ class EnergyOracle:
         self.target_pocket_residues: list = []
         self.use_scorer_model = False
         self.scorer_model = None
+        # Physics-based docking oracle (optional; attached by agent at runtime)
+        self.docking_oracle: Optional["DockingOracle"] = None
+        self.feasibility_scorer: Optional["LabFeasibilityScorer"] = None
 
     def set_target_pocket(self, residues: list):
         self.target_pocket_residues = residues
@@ -72,14 +77,20 @@ class EnergyOracle:
     def compute_energy(self, sequence: str) -> float:
         if not sequence or len(sequence) == 0:
             return 1000.0
-        seq_len = len(sequence)
-        binding = self._compute_binding_score(sequence)
         stability = self._compute_stability_score(sequence)
         solubility = self._compute_solubility_score(sequence)
         bbb = self._compute_bbb_score(sequence)
         hydrophob_pen = self._compute_hydrophobicity_penalty(sequence)
         charge_pen = self._compute_charge_penalty(sequence)
         aggreg_pen = self._compute_aggregation_penalty(sequence)
+
+        # Binding: use physics-based ΔG when oracle is attached, else heuristic
+        if self.docking_oracle is not None:
+            dg = self.docking_oracle.calculate_binding_energy(sequence)['delta_g_total_kcal_mol']
+            # Normalise ΔG [-10, -2] → binding score [1.0, 0.0]
+            binding = float(np.clip((-dg - 2.0) / 8.0, 0.0, 1.0))
+        else:
+            binding = self._compute_binding_score(sequence)
 
         energy = (
             self.binding_weight * (1.0 - binding)
@@ -349,20 +360,55 @@ class EnergyOracle:
         serum_half_life = self.compute_serum_half_life(sequence)
         selectivity = self.compute_selectivity(sequence)
         toxicity_flag = selectivity < 2.0
-        delta_g = self.compute_delta_g_kcal_mol(kd_nm)
+
+        # Physics-based ΔG: prefer docking oracle, fall back to heuristic
+        if self.docking_oracle is not None:
+            binding_data = self.docking_oracle.calculate_binding_energy(sequence)
+            delta_g = binding_data['delta_g_total_kcal_mol']
+            physics_components = {
+                'delta_g_vdw': binding_data['delta_g_vdw'],
+                'delta_g_electrostatic': binding_data['delta_g_electrostatic'],
+                'delta_g_solvation_docking': binding_data['delta_g_solvation'],
+                'physics_hbond_count': binding_data['hbond_count'],
+                'physics_hbond_energy': binding_data['hbond_energy'],
+                'contact_area_ang2': binding_data['contact_area'],
+                'docking_confidence': binding_data['confidence'],
+            }
+        else:
+            delta_g = self.compute_delta_g_kcal_mol(kd_nm)
+            physics_components = {}
+
         # Triple-Gate Physics Model
         hbond_count = self.compute_hbond_count(sequence)
         entropic_penalty = self.compute_entropic_penalty(sequence)
         solvation_delta_g = self.compute_solvation_delta_g(sequence)
         surface_complementarity = self.compute_surface_complementarity(sequence)
-        gate1_pass = surface_complementarity >= 0.4   # Gate 1: Enthalpic Locking (Sc)
-        gate2_pass = solvation_delta_g <= 0.0          # Gate 2: Solvation ΔG (GBSA-lite)
-        gate3_pass = entropic_penalty <= 3.5           # Gate 3: Entropic Penalty
+        gate1_pass = surface_complementarity >= 0.4
+        gate2_pass = solvation_delta_g <= 0.0
+        gate3_pass = entropic_penalty <= 3.5
         lab_viability_score = self.compute_lab_viability_score(
             sequence, delta_g, gate1_pass, gate2_pass, gate3_pass
         )
         selectivity_ddg = self.compute_selectivity_ddg(sequence)
-        return {
+
+        # Lab feasibility (synthesis + delivery assessment)
+        if self.feasibility_scorer is not None:
+            feasibility = self.feasibility_scorer.score_design(sequence)
+            synthesis_score = feasibility['lab_feasibility_score']
+            synthesis_feasible = feasibility['synthesis_feasible']
+            synthesis_issues = feasibility['issues']
+            synthesis_recommendations = feasibility['recommendations']
+            synthesis_time_days = feasibility['estimated_synthesis_time_days']
+            synthesis_cost_usd = feasibility['estimated_synthesis_cost_usd']
+        else:
+            synthesis_score = lab_viability_score
+            synthesis_feasible = lab_viability_score >= 50
+            synthesis_issues = []
+            synthesis_recommendations = []
+            synthesis_time_days = None
+            synthesis_cost_usd = None
+
+        result = {
             "sequence": sequence,
             "binding_score": float(binding),
             "stability_score": float(stability),
@@ -370,14 +416,12 @@ class EnergyOracle:
             "total_energy": float(energy),
             "hydrophobicity": float(self._compute_gravy(sequence)),
             "net_charge": float(self._compute_net_charge(sequence)),
-            # Hard biophysical metrics
             "aggregation_propensity": aggregation,
             "immunogenicity_score": float(immunogenicity),
             "ddg_estimate_kcal_mol": float(ddg),
             "manufacturability_score": float(manufacturability),
             "plddt_estimate": float(plddt),
             "novelty_score": float(novelty),
-            # Pharmacokinetic estimates
             "kd_nM": float(kd_nm),
             "serum_half_life_min": float(serum_half_life),
             "selectivity_ratio": float(selectivity),
@@ -393,7 +437,16 @@ class EnergyOracle:
             "gate3_pass": bool(gate3_pass),
             "lab_viability_score": float(lab_viability_score),
             "selectivity_ddg": float(selectivity_ddg),
+            # Synthesis + delivery feasibility
+            "synthesis_feasibility_score": float(synthesis_score),
+            "synthesis_feasible": bool(synthesis_feasible),
+            "synthesis_issues": synthesis_issues,
+            "synthesis_recommendations": synthesis_recommendations,
+            "estimated_synthesis_time_days": synthesis_time_days,
+            "estimated_synthesis_cost_usd": synthesis_cost_usd,
         }
+        result.update(physics_components)
+        return result
 
     def _compute_binding_score(self, seq: str) -> float:
         if len(seq) < 5:

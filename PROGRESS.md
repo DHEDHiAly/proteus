@@ -6,6 +6,24 @@
 
 ---
 
+## Update — 2026-05-15 (context-aware chat responder wired)
+
+### ContextAwareChatResponder integrated into agent.py run()
+- **New file:** `backend/app/services/context_aware_responder.py` — `ContextAwareChatResponder` with 5 answer builders: `_explain_mechanism`, `_explain_mutations`, `_assess_viability`, `_suggest_improvement`, `_show_progression`
+- **Priority chain (non-design messages):**
+  1. `_answer_question` — static QA, generic biophysics (14 entries)
+  2. **`ContextAwareChatResponder`** — session-specific: mechanism, mutations, viability, improvement, progression (NEW)
+  3. `ChatResponder` — binding breakdown, SOTA, synthesis, delivery, mutations
+  4. Ollama (local LLM, optional)
+  5. `_conversational_fallback_rich` — rich text fallback
+- **Import added:** `from app.services.context_aware_responder import ContextAwareChatResponder`
+- **`__init__` updated:** `self.context_aware_responder = ContextAwareChatResponder()`
+- **`run()` updated:** calls `self.context_aware_responder.respond(message, session)` after static QA, before `ChatResponder`; returns immediately on non-None result
+- **`py_compile`:** clean on both `agent.py` and `context_aware_responder.py`
+- **9/9 regression tests pass** (`venv/bin/pytest tests/test_agent_conversation.py`)
+
+---
+
 ## Update — 2026-05-14 (agent chat + auth + demo)
 
 ### Bugfix: questions no longer re-trigger MCMC
@@ -18,17 +36,6 @@
 - **Frontend (`frontend/src/pages/AgentPage.tsx`):** same treatment/clinical pattern added at the top of `QA_PAIRS` so common questions answer **locally** without a network round-trip.
 - **Tests:** `backend/tests/test_agent_conversation.py` — 9 regression tests (conversation vs MCMC + heuristics). Run with `venv/bin/pytest tests/test_agent_conversation.py` (numpy may segfault in some sandboxed CI; OK on normal macOS).
 - **Demo script:** `scripts/demo_agent.sh` — `curl` login as `admin@proteus.dev` / `password123`, POST conversational message (assert no `round_complete`), then `design a peptide` (assert MCMC). Set `PROTEUS_API` if the API is not on `localhost:8000`. **Restart the FastAPI process after pulling** so the running server loads the new `agent.py` (otherwise the script still sees old behaviour).
-
-### Session context wiring (browser → backend → Ollama)
-- **`DesignSessionContext` type** defined in `frontend/src/types/agent.ts` and `backend/app/schemas/agent.py`: holds `target_name`, `pdb_id`, `best_sequence`, `seed_sequence`, `binding_score`, `delta_g_kcal_mol`, `kd_nM`, `stability_score`, `solubility_score`, `total_energy`, `lab_viability_score`.
-- **`agentApi.design(patient, message, session?)`** in `frontend/src/services/agent.ts`: appends `{ session }` to POST body when session is present.
-- **`designSession` state** in `AgentPage.tsx`: built after each completed run from `lastComplete.data.rounds` (best round by `binding_score`); passed to `agentApi.design` on every subsequent message.
-- **Backend `AgentRunRequest`** already has `session: Optional[DesignSessionContext]`; `api/agent.py` passes it to `agent.run()`.
-- **`agent.run()` conversational path**: `_format_session_block()` injects live metrics into the Ollama system prompt so questions like "what is the binding score" return actual numbers.
-- **Disclaimer banner** added below nav in `AgentPage.tsx`: "Research use only — sequences are computational hypotheses, not prescriptions."
-- **Additional QA pairs** added (frontend + backend): treatment framing, "how does it/everything work", "what are the results".
-- **`py_compile` passes clean** — syntax error in `_conversational_fallback_rich` resolved.
-- **Frontend build** verified: 928 modules, 0 TS errors, ~2.5s.
 
 ### Earlier same-week: JWT refresh body
 - `POST /api/v1/auth/refresh` now accepts JSON `{"refresh_token":"..."}` via `RefreshTokenRequest` — fixes silent refresh failure and cascading `Could not validate credentials` on `/agent/*`.

@@ -58,6 +58,8 @@ export interface DesignSessionContext {
   solubility_score?: number
   total_energy?: number
   lab_viability_score?: number
+  mutations_from_seed?: string[]
+  rounds_summary?: Record<string, unknown>[]
 }
 
 export interface IterationRound {

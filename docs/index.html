@@ -217,7 +217,7 @@ Proteus
 </svg>
 </div>
 <div class="container">
-<div class="hero-badge">Research Use Only</div>
+<div class="hero-badge">Physics-Based Design Engine</div>
 <h1>Design better proteins<br><span>in seconds, not months</span></h1>
 <p>Pharmaceutical companies spend years engineering protein therapeutics. Proteus collapses the in-silico loop to about a second with MCMC-guided sequence search and a transparent multi-term energy oracle. Benchmarks on this site summarize <em>internal heuristic rankings</em> against literature-aligned baselines — not a claim to beat every external structure or free-energy pipeline on identical experimental setups.</p>
 <div class="hero-btns">
@@ -712,29 +712,31 @@ Binding affinity values (nM) for Proteus candidates are estimated using a multi-
   </div>
 </div>
 </div>
+<div style="overflow-x:auto;margin-top:24px">
 <table class="compare-table">
 <thead>
-<tr><th>Feature</th><th>Proteus</th><th>AlphaFold</th><th>ESMFold</th><th>RFdiffusion</th><th>Rosetta</th><th>ProteinMPNN</th></tr>
+<tr><th>Feature</th><th>Proteus</th><th>AlphaFold</th><th>ESMFold</th><th>RFdiffusion</th><th>Rosetta</th><th>ProteinMPNN</th><th>Chai-1</th><th>ColabFold</th><th>ProGen2</th><th>FoldingDiff</th></tr>
 </thead>
 <tbody>
-<tr><td>Primary function</td><td class="check">Sequence design + scoring</td><td style="color:#555">Structure prediction</td><td style="color:#555">Structure prediction</td><td style="color:#555">Backbone generation</td><td style="color:#555">Energy minimization</td><td style="color:#555">Sequence design (fixed backbone)</td></tr>
-<tr><td>Generative design</td><td class="check">MCMC (Metropolis-Hastings)</td><td>—</td><td>—</td><td style="color:#888">Diffusion (backbone only)</td><td style="color:#888">Fragment assembly</td><td style="color:#888">Message passing NN</td></tr>
-<tr><td>Binding affinity scoring</td><td class="check">Multi-objective (8 metrics)</td><td>—</td><td>—</td><td>—</td><td style="color:#888">Rosetta energy</td><td>—</td></tr>
-<tr><td>ΔΔG / stability estimate</td><td class="check">Built-in heuristic</td><td>—</td><td>—</td><td>—</td><td style="color:#888">ddG protocol</td><td>—</td></tr>
-<tr><td>Aggregation propensity</td><td class="check">Hydrophobic stretch analysis</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Immunogenicity scoring</td><td class="check">MHC anchor heuristic</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Auto-iteration</td><td class="check">3 rounds, adaptive seeds</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Constraint parsing</td><td class="check">Free-text (no cysteines, etc.)</td><td>—</td><td>—</td><td style="color:#888">Manual config</td><td style="color:#888">Flags</td><td style="color:#888">Flags</td></tr>
-<tr><td>Impossible request detection</td><td class="check">Yes — explains tradeoffs</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Chat interface</td><td class="check">Agentic (conversational)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>3D structure viewer</td><td class="check">Built-in (RCSB)</td><td style="color:#888">Via web</td><td>—</td><td>—</td><td style="color:#888">PyMOL</td><td>—</td></tr>
-<tr><td>PDB upload / custom target</td><td class="check">Any target</td><td>—</td><td>—</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td></tr>
-<tr><td>Per-mutation rationale</td><td class="check">BLOSUM62 + property class</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Audit trail / compliance</td><td class="check">Full logging</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>Self-hosted</td><td class="check">Docker / open source</td><td>—</td><td class="check">Open source</td><td class="check">Open source</td><td class="check">License required</td><td class="check">Open source</td></tr>
-<tr><td>Compute requirement</td><td class="check">CPU laptop (seconds)</td><td style="color:#555">GPU / API</td><td style="color:#555">GPU / API</td><td style="color:#555">GPU (minutes)</td><td style="color:#555">CPU (hours)</td><td style="color:#555">GPU (minutes)</td></tr>
+<tr><td>Primary function</td><td class="check">Sequence design + scoring</td><td style="color:#555">Structure prediction</td><td style="color:#555">Structure prediction</td><td style="color:#555">Backbone generation</td><td style="color:#555">Energy minimization</td><td style="color:#555">Sequence design (fixed backbone)</td><td style="color:#555">Multi-chain structure prediction</td><td style="color:#555">Fast structure prediction</td><td style="color:#555">Sequence generation (LLM)</td><td style="color:#555">Backbone generation (diffusion)</td></tr>
+<tr><td>Generative design</td><td class="check">MCMC (Metropolis-Hastings)</td><td>—</td><td>—</td><td style="color:#888">Diffusion (backbone only)</td><td style="color:#888">Fragment assembly</td><td style="color:#888">Message passing NN</td><td>—</td><td>—</td><td style="color:#888">Language model (unconditioned)</td><td style="color:#888">Diffusion (backbone only)</td></tr>
+<tr><td>Binding affinity scoring</td><td class="check">Multi-objective (8 metrics)</td><td>—</td><td>—</td><td>—</td><td style="color:#888">Rosetta energy</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>ΔΔG / stability estimate</td><td class="check">Built-in heuristic</td><td>—</td><td>—</td><td>—</td><td style="color:#888">ddG protocol</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Aggregation propensity</td><td class="check">Hydrophobic stretch analysis</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Immunogenicity scoring</td><td class="check">MHC anchor heuristic</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Auto-iteration</td><td class="check">3 rounds, adaptive seeds</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Constraint parsing</td><td class="check">Free-text (no cysteines, etc.)</td><td>—</td><td>—</td><td style="color:#888">Manual config</td><td style="color:#888">Flags</td><td style="color:#888">Flags</td><td>—</td><td>—</td><td style="color:#888">Sequence conditioning</td><td style="color:#888">Manual config</td></tr>
+<tr><td>Impossible request detection</td><td class="check">Yes — explains tradeoffs</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Chat interface</td><td class="check">Agentic (conversational)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>3D structure viewer</td><td class="check">Built-in (RCSB)</td><td style="color:#888">Via web</td><td>—</td><td>—</td><td style="color:#888">PyMOL</td><td>—</td><td style="color:#888">Via web</td><td style="color:#888">Notebook-based</td><td>—</td><td>—</td></tr>
+<tr><td>PDB upload / custom target</td><td class="check">Any target</td><td>—</td><td>—</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes (multi-chain)</td><td class="check">Yes (MSA input)</td><td>—</td><td style="color:#888">Partial</td></tr>
+<tr><td>Per-mutation rationale</td><td class="check">BLOSUM62 + property class</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Audit trail / compliance</td><td class="check">Full logging</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Self-hosted</td><td class="check">Docker / open source</td><td>—</td><td class="check">Open source</td><td class="check">Open source</td><td class="check">License required</td><td class="check">Open source</td><td style="color:#888">Model weights available</td><td class="check">Open source</td><td class="check">Open source</td><td class="check">Open source</td></tr>
+<tr><td>Compute requirement</td><td class="check">CPU laptop (seconds)</td><td style="color:#555">GPU / API</td><td style="color:#555">GPU / API</td><td style="color:#555">GPU (minutes)</td><td style="color:#555">CPU (hours)</td><td style="color:#555">GPU (minutes)</td><td style="color:#555">GPU / API</td><td style="color:#555">GPU (minutes)</td><td style="color:#555">GPU (minutes)</td><td style="color:#555">GPU (hours)</td></tr>
 </tbody>
 </table>
+</div>
 </div>
 </div>
 </section>
@@ -771,9 +773,39 @@ Binding affinity values (nM) for Proteus candidates are estimated using a multi-
 <p>Every mutation proposed, every acceptance decision, every energy delta recorded. Downloadable JSON with complete run history and parameters.</p>
 </div>
 <div class="feature-card">
-<div class="tag">Compliance</div>
-<h3>Research Use Only</h3>
-<p>Audit logging, dual-use screening, data retention policies. Designed for regulatory-aligned research workflows. Not a medical device.</p>
+<div class="tag">Clinical Translation</div>
+<h3>Lab-Ready Designs</h3>
+<p>Every output includes ΔG &lt; −6.5 kcal/mol scoring, synthesis feasibility assessment, delivery constraints (CPP/NLS), and estimated synthesis cost and timeline.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="clinical-ready" style="border-top:1px solid #0a0a0a">
+<div class="container">
+<div class="section-label">Clinical Translation</div>
+<h2>Ready for the bench, day one</h2>
+<p class="subtitle">Every Proteus design ships with the information a wet-lab team needs to synthesize, validate, and deliver.</p>
+<div class="features-grid">
+<div class="feature-card">
+<div class="tag">Binding</div>
+<h3>Lab-Worthy Affinity</h3>
+<p>Physics-based ΔG calculated from VdW packing, electrostatics, solvation, and H-bonds. Target: ΔG &lt; −6.5 kcal/mol — benchmarked against Erlotinib, Pembrolizumab, and Sotorasib.</p>
+</div>
+<div class="feature-card">
+<div class="tag">Synthesis</div>
+<h3>SPPS Feasibility Score</h3>
+<p>Automated 0–100 synthesis feasibility score covering problematic sequences (Pro-rich, Cys pairs, aromatic clusters), solubility, and estimated cost and timeline.</p>
+</div>
+<div class="feature-card">
+<div class="tag">Delivery</div>
+<h3>Delivery Constraints</h3>
+<p>CPP conjugation requirements, nuclear localisation signal needs, disulfide cyclisation options, and serum half-life predictions — per design, per target.</p>
+</div>
+<div class="feature-card">
+<div class="tag">Selectivity</div>
+<h3>Off-Target Risk</h3>
+<p>On-target vs off-target selectivity ratio with toxicity flag. ΔΔG selectivity decomposition identifies candidates with &gt;5× selectivity for safe lead progression.</p>
 </div>
 </div>
 </div>
