@@ -674,7 +674,70 @@ New route `POST /agent/design/stream`:
 
 ---
 
-## Phase 4: Commercial Website Overhaul ✅ Completed
+## Phase 6: Frontend SSE Streaming Consumer & ESMFold PDB Download ✅ Completed
+
+Commit `3aab2ff`. All changes in `frontend/` only. `tsc --noEmit`: 0 errors.
+
+### A. SSE Streaming Consumer — `frontend/src/pages/AgentPage.tsx` ✅
+
+Tier 1 of `handleSend` (design requests matching `DESIGN_RE`) previously called `agentApi.design()` — a standard Axios POST that blocked until the full `AgentRunResponse` was returned. Replaced with a native `fetch + ReadableStream` consumer against the streaming endpoint:
+
+- **Endpoint:** `POST /api/v1/agent/design/stream` (same request body: `{ patient, message, session? }`)
+- **Auth:** JWT token read from `localStorage.getItem('proteus_access_token')` and injected as `Authorization: Bearer <token>` header
+- **Stream reading:** `response.body.getReader()` + `TextDecoder`; SSE lines (`data: {...}\n\n`) split on `\n`, incomplete trailing line kept in a buffer
+- **Event handling:**
+  - `progress` → updates `streamStatus` state: `"Chain N · step N/total · energy X.XXXX"`
+  - `epoch_complete` → updates `streamStatus`: `"Epoch N/M · best energy X.XXXX"`
+  - `error` → throws, caught by outer `catch`
+  - `complete` → clears `streamStatus`; applies all existing state updates (candidates, designSession, designRounds, activeViewerPdb, designTarget, etc.) using `event.result` (`AgentRunResponse`) instead of `res.data`
+- **Error handling:** `err.message` used (not `err?.response?.data?.detail`) since errors are now plain `Error` throws, not Axios errors
+
+### B. Live Streaming Status Ticker ✅
+
+New state: `const [streamStatus, setStreamStatus] = useState<string>('')`
+
+Rendered in the chat sidebar below the message list while MCMC is running:
+
+```tsx
+{streamStatus && (
+  <div className="flex items-center space-x-2 px-1 py-1 text-[10px] text-gray-500 font-mono">
+    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+    <span>{streamStatus}</span>
+  </div>
+)}
+```
+
+The ticker disappears (`streamStatus = ''`) on `complete` or `error`. It replaces the silent spinner that previously showed nothing during MCMC execution.
+
+### C. ESMFold PDB Download ✅
+
+New state: `const [esmfoldPdb, setEsmfoldPdb] = useState<string | null>(null)`
+
+On `complete` event, if `event.result.pdb_string` is present, it is stored: `setEsmfoldPdb(data.pdb_string)`. After the run completes, a download button appears in the chat sidebar:
+
+```tsx
+{esmfoldPdb && !streamStatus && (
+  <div className="border border-[#1a1a1a] rounded-lg px-2.5 py-2 text-[10px] text-gray-400 ...">
+    <span>ESMFold structure predicted</span>
+    <button onClick={() => { /* Blob download of .pdb file */ }}>Download PDB</button>
+  </div>
+)}
+```
+
+Filename pattern: `proteus-esmfold-<first-8-AA>.pdb`. Clears on next design run (`setEsmfoldPdb(null)` at Tier 1 entry).
+
+### D. `AgentRunResponse` TypeScript Type — `frontend/src/types/agent.ts` ✅
+
+Added `pdb_string?: string` to the `AgentRunResponse` interface, matching the backend schema field added in Phase 5E (`backend/app/schemas/agent.py`).
+
+Added `AgentRunResponse` to the import line in `AgentPage.tsx` (was previously only importing `PatientInfo`, `AgentMessage`, `DesignSessionContext`).
+
+### Verification
+- `tsc --noEmit`: 0 errors
+- SSE consumer handles all four backend event types: `progress`, `epoch_complete`, `complete`, `error`
+- All post-run state updates (candidates, designSession, rounds, viewer PDB, mutations) identical to previous blocking implementation — only the transport layer changed
+
+---
 
 ### Problem
 Website positioning emphasized academic/research framing ("FOR RESEARCH USE ONLY", GitHub links, founder background) and generic target showcase. This defensive posturing undercut clinical credibility and positioned Proteus as a research tool rather than a production platform.
