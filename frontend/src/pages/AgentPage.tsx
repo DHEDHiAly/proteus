@@ -14,34 +14,35 @@ import { savedDesignsService } from '../services/savedDesigns';
 import type { SavedDesign } from '../services/savedDesigns';
 
 // ── Frontend Q&A routing ──────────────────────────────────────────────────────
-// Only messages that clearly match a known biophysics topic are answered locally.
-// Everything else — design requests, synonyms, typos, ambiguous phrasing — is
-// sent to the API so the real agent handles it.
+// Architecture:
+//  1. DESIGN_RE match  → call backend (MCMC) — design requests only
+//  2. QA_PAIRS match   → answer locally (biophysics education, no session needed)
+//  3. Session present  → buildSessionReply() with actual session data
+//  4. Fallback         → call backend for static QA (no session, unknown topic)
+// This means conversational messages NEVER trigger MCMC regardless of backend state.
+
+// Mirrors backend _DESIGN_TRIGGERS.  Only messages matching this start an MCMC cycle.
+const DESIGN_RE = /\bdesign\b|\boptimize\b|\bgenerate\b|\bcreate\b|\brun\s+(mcmc|again|another|more|a\s+new)\b|\bmake\s+.{0,20}(protein|peptide|sequence|candidate)\b|\bfind\s+.{0,20}(binder|sequence|candidate)\b|\btry\s+(again|another|with|a\s+different)\b|\bstart\s+(over|again|a\s+new)\b|\bnew\s+(candidate|sequence)\b/i;
+
 const QA_PAIRS: [RegExp, string][] = [
   [/how\s+does\s+(this|the|your|that)\s+treatment\s+work|how\s+does\s+treatment\s+work|treatment\s+work\??|what\s+is\s+(this|the)\s+treatment|clinical\s+treatment\s+plan|how\s+would\s+treatment\s+(work|go)|mechanism\s+of\s+(the\s+)?treatment/i,
-    "**What “treatment” means in Proteus**\n\nProteus does **not** prescribe real-world therapy. It proposes **in-silico** peptide sequences and scores for **research only**.\n\n**Molecule intent:** sequences target the protein in the viewer; wet-lab validation is required.\n\n**Patient care:** only clinicians can plan real treatment.\n\nTo run another design pass, say **design a peptide** or **optimise for solubility**."],
+    "**What \"treatment\" means in Proteus**\n\nProteus does **not** prescribe real-world therapy. It proposes **in-silico** peptide sequences and scores for **research only**.\n\n**Molecule intent:** sequences target the protein in the viewer; wet-lab validation is required.\n\n**Patient care:** only clinicians can plan real treatment.\n\nTo run another design pass, say **design a peptide** or **optimise for solubility**."],
   [/what\s+(can|does|is|do)\s+(you|it|this|proteus)\b|what\s+do\s+you\s+do|how\s+to\s+use|tell\s+me\s+about\s+(yourself|proteus|this)/i,
     "**What Proteus Does**\n\nGiven patient clinical information, Proteus:\n- Resolves the molecular target (EGFRvIII, PD-L1, KRAS G12C, SARS-CoV-2 3CL)\n- Runs 3 rounds of MCMC design across parallel temperature chains\n- Scores each candidate on 8+ biophysical objectives (ΔG, Kd, stability, solubility, selectivity, immunogenicity, aggregation, half-life)\n- Returns the best sequence with full mutation rationale and Triple-Gate physics checks\n\nTo start a design run, say something like 'design a peptide' or 'optimize for high solubility'."],
   [/delta\s*g|binding\s+free\s+energ|\bdg\b.*binding/i,
     "**ΔG Binding** — Gibbs free energy of binding (kcal/mol). More negative = stronger:\n- < −9: strong  ·  −7 to −9: good  ·  −6 to −7: promising  ·  > −6: weak\nCalculated as ΔG = RT·ln(Kd) at body temperature (310 K)."],
   [/how\s+does\s+(it|this|the\s+platform|the\s+system|everything)\s+work/i,
     "**How Proteus works**\n\n1. Clinical context → resolved target (built-in or custom PDB).\n2. Several MCMC rounds (Metropolis–Hastings + parallel tempering) mutate the sequence.\n3. A composite oracle scores binding proxy, stability, solubility, charge, aggregation, etc.\n4. You get ranked sequences, mutations, and a 3D viewer — not a clinical plan.\n\n**Note:** in-silico scores are hypotheses until validated (e.g. SPR/ITC). Many docking workflows treat ~−6 kcal/mol or better as worth ordering for follow-up."],
-  [/results?\s+(of|from|for)|all\s+of\s+the\s+modell|modelling\s+results|what\s+are\s+the\s+results/i,
-    "**Where to read results**\n\n- **Left chat:** each round's metrics and best sequence.\n- **Right:** candidate list sorted by binding proxy.\n- **Center:** structure with pocket mutations.\n\n**Treatment:** Proteus does not prescribe therapy — research use only. For a new optimisation, say *design a peptide* or *optimise for solubility*."],
   [/\bkd\b|dissociation\s+constant|binding\s+affinity/i,
     "**Kd (Dissociation Constant)** — lower = tighter binding:\n- < 1 nM: ultra-high  ·  1–10 nM: drug-like  ·  10–100 nM: high  ·  > 1 μM: weak\nProteus estimates Kd from ΔG = RT·ln(Kd) via the multi-objective energy oracle."],
   [/\bmcmc\b|markov\s+chain|monte\s+carlo|how\s+does\s+(proteus|mcmc)\s+work/i,
     "**How Proteus works**\nMetropolis-Hastings MCMC across parallel temperature chains (0.5 → 10):\n1. Proposes residue mutations at each step\n2. Accepts improvements greedily; accepts bad moves probabilistically at high temperature\n3. Runs 3 rounds; returns the best candidate across all chains\nR-hat < 1.05 = converged. ESS measures chain mixing quality."],
   [/\bplddt\b|structural\s+confidence/i,
     "**pLDDT** — structural confidence proxy (0–100):\n- > 90: ordered  ·  70–90: confident  ·  50–70: partly disordered  ·  < 50: likely disordered"],
-  [/\bstabilit\b|\bddg\b|thermostab/i,
+  [/\bddg\b|thermostab/i,
     "**Stability** — secondary structure propensity (helix + sheet content, %). ΔΔG < 0 = more stable than unfolded. Use 'thermostable' constraint to increase the stability weight."],
-  [/\bsolubil\b/i,
-    "**Solubility** — estimated from GRAVY score and charged residue fraction. High D/E/K/R → soluble. Use 'high solubility' constraint to rebalance the energy oracle."],
   [/\bselectivit\b|off.target/i,
     "**Selectivity ratio** = on-target / off-target binding. > 5x: highly selective  ·  2–5x: acceptable  ·  < 2x: toxicity flag raised."],
-  [/lab\s+viabilit|lab.worth/i,
-    "**Lab Viability Score (0–100)** — composite of ΔG, Triple-Gate checks, and selectivity.\n≥ 70: proceed to synthesis  ·  50–70: address failing gates  ·  < 50: needs optimization."],
   [/triple.gate|gate\s*[123]|enthalpic|solvation\s+gate|entropic/i,
     "**Triple-Gate Physics Model**\n- Gate 1 Enthalpic Locking: surface complementarity Sc ≥ 0.4\n- Gate 2 Solvation: ΔG_solv ≤ 0 kcal/mol\n- Gate 3 Entropic Penalty: −TΔS ≤ 3.5 kcal/mol\nAll three must pass for a lab-worthy candidate."],
   [/\br.hat\b|rhat|convergence|ess\b|effective\s+sample/i,
@@ -54,13 +55,223 @@ const QA_PAIRS: [RegExp, string][] = [
     "**Serum half-life** — estimated from sequence length and composition:\n- Peptides < 10 AA: 10–30 min  ·  Miniproteins: 30–120 min  ·  Nanobodies: 60–240 min"],
 ];
 
-// Returns a local answer if the message clearly asks about a known biophysics topic;
-// returns null for everything else so it goes to the API.
+// Returns a local answer for known biophysics topics; null → goes to session reply or backend.
 function getQAAnswer(msg: string): string | null {
   for (const [pattern, answer] of QA_PAIRS) {
     if (pattern.test(msg)) return answer;
   }
   return null;
+}
+
+// ── Session-grounded chat responses ───────────────────────────────────────────
+// These use the actual designSession data to answer questions about the current
+// peptide without a backend round-trip (and therefore cannot trigger MCMC).
+
+function _dgLabel(dg: number): string {
+  if (dg <= -9) return 'strong binder';
+  if (dg <= -7) return 'good binder';
+  if (dg <= -6) return 'promising — meets the −6 kcal/mol lab-ordering threshold';
+  return 'weak binder — below the −6 kcal/mol lab threshold';
+}
+function _kdLabel(kd: number): string {
+  if (kd < 1) return 'ultra-high affinity';
+  if (kd < 10) return 'drug-like affinity';
+  if (kd < 100) return 'high affinity';
+  if (kd < 1000) return 'moderate affinity';
+  return 'weak affinity';
+}
+
+function buildFullSummary(session: DesignSessionContext, patient: PatientInfo | null): string {
+  const seq = session.best_sequence || '';
+  const target = session.target_name || patient?.tumor_markers || patient?.cancer_type || 'target';
+  const dg = (session.delta_g_kcal_mol && session.delta_g_kcal_mol !== 0) ? session.delta_g_kcal_mol : null;
+  const binding = session.binding_score;
+  const kd = session.kd_nM && session.kd_nM !== 0 ? session.kd_nM : null;
+  const stab = session.stability_score;
+  const sol = session.solubility_score;
+  const lab = session.lab_viability_score;
+
+  const lines: string[] = [`**Current design: \`${seq}\` targeting ${target}**`, ''];
+
+  if (dg !== null) {
+    lines.push(`- **ΔG binding:** ${dg.toFixed(2)} kcal/mol — ${_dgLabel(dg)}`);
+  } else if (binding !== null && binding !== undefined) {
+    // Binding proxy is a 0–1 relative score from the MCMC oracle
+    const pct = (binding * 100).toFixed(1);
+    const grade = binding >= 0.8 ? 'strong' : binding >= 0.65 ? 'good' : binding >= 0.5 ? 'moderate' : 'weak';
+    lines.push(`- **Binding proxy:** ${pct}% — ${grade} (oracle's relative on-target score; ΔG not computed for this run)`);
+  }
+
+  if (kd !== null) {
+    lines.push(`- **Kd:** ${kd.toFixed(0)} nM — ${_kdLabel(kd)}`);
+  }
+
+  if (stab !== null && stab !== undefined) {
+    const stabPct = (stab * 100).toFixed(0);
+    const stabFlag = stab >= 0.5 ? 'adequate' : 'low — consider adding the **thermostable** constraint';
+    lines.push(`- **Stability:** ${stabPct}% secondary structure propensity (${stabFlag})`);
+  }
+
+  if (sol !== null && sol !== undefined) {
+    const solPct = (sol * 100).toFixed(0);
+    const solFlag = sol >= 0.5 ? 'adequate' : 'low — consider **high solubility** constraint';
+    lines.push(`- **Solubility:** ${solPct}% GRAVY-based estimate (${solFlag})`);
+  }
+
+  if (lab !== null && lab !== undefined) {
+    const verdict = lab >= 70 ? 'lab-worthy — proceed to synthesis' : lab >= 50 ? 'borderline — address failing Triple-Gate checks first' : 'below threshold — significant optimization required';
+    lines.push(`- **Lab viability:** ${lab.toFixed(0)}/100 — ${verdict}`);
+  }
+
+  if (dg !== null && kd !== null) {
+    lines.push('', '**Relationship:** ΔG = RT·ln(Kd) at 310 K. More negative ΔG = lower Kd = tighter binding.');
+  }
+
+  lines.push('', '*Scores are in-silico estimates from the MCMC oracle. Validate with SPR, ITC, or a competitive binding assay before lab hand-off.*');
+  lines.push('', 'To improve: say **optimize for binding**, **high solubility**, **thermostable**, or **run MCMC again**.');
+  return lines.join('\n');
+}
+
+function buildMutationReply(session: DesignSessionContext, patient: PatientInfo | null): string {
+  const seq = session.best_sequence || '';
+  const seed = session.seed_sequence || '';
+  const target = session.target_name || patient?.tumor_markers || patient?.cancer_type || 'target';
+  const muts = session.mutations_from_seed || [];
+
+  if (!seq) return 'No design session active. Run a design cycle first.';
+
+  const lines: string[] = [`**Mutations in \`${seq}\` vs seed (${target})**`, ''];
+
+  if (muts.length === 0) {
+    lines.push('No mutations recorded — sequence matches seed exactly, or mutation data was not captured for this run.');
+  } else {
+    lines.push(`${muts.length} mutation${muts.length !== 1 ? 's' : ''} from seed${seed ? ` (\`${seed}\`)` : ''}:`);
+    muts.forEach((m) => lines.push(`- **${m}**`));
+    lines.push('', 'Each mutation was accepted by the MCMC sampler because it improved the composite energy score (binding + stability + solubility + penalties).');
+  }
+
+  lines.push('', 'To explore different mutations, say **optimize for binding** or **run MCMC again**.');
+  return lines.join('\n');
+}
+
+function buildImprovementReply(session: DesignSessionContext, _patient: PatientInfo | null): string {
+  const dg = (session.delta_g_kcal_mol && session.delta_g_kcal_mol !== 0) ? session.delta_g_kcal_mol : null;
+  const binding = session.binding_score;
+  const stab = session.stability_score ?? 0;
+  const sol = session.solubility_score ?? 0;
+  const lab = session.lab_viability_score ?? 0;
+
+  const suggestions: string[] = [];
+
+  // Rank the weakest area
+  if (dg !== null && dg > -6) {
+    suggestions.push('**Binding** is below the −6 kcal/mol lab-ordering threshold. Try: **optimize for binding** or increase aromatic/hydrophobic residue content (W, F, Y at binding-pocket positions).');
+  } else if (binding !== null && binding !== undefined && binding < 0.65) {
+    suggestions.push('**Binding proxy** is moderate. Try: **optimize for binding** or say **run MCMC again** with a longer run.');
+  }
+
+  if (stab < 0.5) {
+    suggestions.push('**Stability** is low. Try: add **thermostable** constraint, or reduce flexible Gly/Pro content in the middle of the sequence.');
+  }
+
+  if (sol < 0.5) {
+    suggestions.push('**Solubility** is low. Try: add **high solubility** constraint to increase D/E/K/R content and reduce hydrophobic stretches.');
+  }
+
+  if (lab < 70) {
+    const msg = lab < 50
+      ? '**Lab viability** is below threshold. Check Triple-Gate physics: surface complementarity, solvation ΔG, and entropic penalty. Try: **optimize for binding** with the thermostable + high solubility constraints together.'
+      : '**Lab viability** is borderline (50–70). One or more Triple-Gate checks are failing. Try a focused re-run: **optimize for solubility** or **optimize for stability**.';
+    suggestions.push(msg);
+  }
+
+  if (suggestions.length === 0) {
+    return `**This design looks solid across all metrics.** To push further:\n- Say **run MCMC again** for another optimization pass\n- Try **optimize for binding** with a tighter temperature schedule\n- Consider ordering for wet-lab validation (SPR binding assay, thermal shift, SPPS synthesis)`;
+  }
+
+  return `**Suggested improvements for the current design:**\n\n${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n\n')}`;
+}
+
+function buildViabilityReply(session: DesignSessionContext, _patient: PatientInfo | null): string {
+  const lab = session.lab_viability_score;
+  const seq = session.best_sequence || '';
+
+  if (lab === null || lab === undefined) {
+    return `No lab viability score available for \`${seq}\`. Run a design cycle first.`;
+  }
+
+  let verdict: string;
+  if (lab >= 70) {
+    verdict = `**Lab-worthy.** Score ${lab.toFixed(0)}/100 — this candidate passes the lab viability threshold. It is a reasonable candidate for SPPS synthesis, SPR binding assay, and cell-based validation.`;
+  } else if (lab >= 50) {
+    verdict = `**Borderline.** Score ${lab.toFixed(0)}/100 — one or more Triple-Gate physics checks are likely failing. Address stability or solubility before ordering synthesis. Try **optimize for solubility** or **thermostable** constraint.`;
+  } else {
+    verdict = `**Below threshold.** Score ${lab.toFixed(0)}/100 — significant optimization required before lab consideration. Try **optimize for binding** with high solubility and thermostable constraints together.`;
+  }
+
+  return `**Lab viability for \`${seq}\`**\n\n${verdict}\n\n*Triple-Gate checks: (1) surface complementarity ≥ 0.4, (2) solvation ΔG ≤ 0, (3) entropic penalty ≤ 3.5 kcal/mol. All three must pass for a lab-worthy score.*`;
+}
+
+/**
+ * Returns a session-grounded reply for conversational questions about the current
+ * design.  Returns null for questions that should go to the backend (mechanism,
+ * general biophysics education, etc.) or when no session is active.
+ */
+function buildSessionReply(
+  msg: string,
+  session: DesignSessionContext | null,
+  patient: PatientInfo | null,
+): string | null {
+  if (!session?.best_sequence) return null;
+
+  const lower = msg.toLowerCase();
+
+  // Score / metric / binding / result questions
+  if (/\bscore[s]?\b|\bmetric[s]?\b|\bresult[s]?\b|\bvalue[s]?\b|\bkcal\b|\bdelta[_\s]*g\b|\bdg\b|\bkd\b|\bdissociation\b|\baffinity\b|\bbinding\b|\bstabilit\b|\bsolubil\b|\blab\s*(viab|worth|score)\b|\bviability\b|\bnumber[s]?\b|\bstat[s]?\b|\bsummar\b|\boverview\b|\breport\b/.test(lower)) {
+    // Route sub-topics
+    if (/\bviab|\blab.?(worth|score)\b/.test(lower) && !/\bscore[s]?\b|\bmetric[s]?\b|\bkcal\b|\bdelta[_\s]*g\b|\bkd\b/.test(lower)) {
+      return buildViabilityReply(session, patient);
+    }
+    if (/\bsolubil\b/.test(lower) && !/\bscore[s]?\b|\bmetric[s]?\b|\bkcal\b|\bdelta[_\s]*g\b/.test(lower)) {
+      const sol = session.solubility_score;
+      if (sol !== null && sol !== undefined) {
+        const pct = (sol * 100).toFixed(0);
+        const flag = sol >= 0.5 ? 'adequate' : 'low — consider **high solubility** constraint';
+        return `**Solubility for \`${session.best_sequence}\`:** ${pct}% (GRAVY-based estimate — ${flag})\n\nHigh D/E/K/R content improves solubility. Hydrophobic stretches (I/L/F/V/W/M ≥ 4 residues) reduce it.\n\nTo improve: say **optimize for high solubility**.`;
+      }
+    }
+    if (/\bstabilit\b/.test(lower) && !/\bscore[s]?\b|\bmetric[s]?\b|\bkcal\b|\bdelta[_\s]*g\b/.test(lower)) {
+      const stab = session.stability_score;
+      if (stab !== null && stab !== undefined) {
+        const pct = (stab * 100).toFixed(0);
+        const flag = stab >= 0.5 ? 'adequate' : 'low — consider **thermostable** constraint';
+        return `**Stability for \`${session.best_sequence}\`:** ${pct}% secondary structure propensity (${flag})\n\nSecondary structure content (helix + sheet) is used as a stability proxy. Low Gly/Pro content and balanced hydrophobic core improve it.\n\nTo improve: say **thermostable** in your next design request.`;
+      }
+    }
+    return buildFullSummary(session, patient);
+  }
+
+  // Mutation questions
+  if (/\bmutation[s]?\b|\bchanged?\b|\bmodif\b|\bdiff(er)?\b|\bresidue[s]?\b|\bsubstitut\b|\bwhat\s+(were|are|is)\s+the\s+(change|mutation|residue)\b/.test(lower)) {
+    return buildMutationReply(session, patient);
+  }
+
+  // Improvement / next-steps questions
+  if (/\bimprove?\b|\boptimize?\b|\benhance\b|\bbetter\b|\bboost\b|\bnext\s+step[s]?\b|\bwhat\s+(can|should|would|could)\b/.test(lower) && !/\bdesign\b|\brun\b|\bgenerate\b/.test(lower)) {
+    return buildImprovementReply(session, patient);
+  }
+
+  // Lab / synthesis readiness
+  if (/\blab\s*(read|worth|viab|synth)\b|\bsynth\b|\bspps\b|\border\b|\bfeasib\b|\bready\b/.test(lower)) {
+    return buildViabilityReply(session, patient);
+  }
+
+  // General "tell me about this" / "what is the current design" / "how is it doing"
+  if (/\b(current|best|latest|this)\s+(design|peptide|candidate|sequence)\b|\btell\s+me\b|\bhow\s+is\s+(it|this|the\s+(design|peptide|candidate))\b|\bwhat\s+(is\s+)?(the\s+)?(current|best|latest)\b/.test(lower)) {
+    return buildFullSummary(session, patient);
+  }
+
+  return null; // Let QA_PAIRS or backend handle it
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -500,117 +711,144 @@ export default function AgentPage() {
     const userMessage = input;
     setInput('');
 
-    // If the message clearly matches a known biophysics Q&A topic, answer locally.
-    // Everything else — design requests, synonyms, typos, ambiguous phrasing — goes to the API.
-    const localAnswer = getQAAnswer(userMessage);
-    if (localAnswer !== null) {
-      setMessages((prev) => [...prev, { role: 'agent', content: localAnswer }]);
+    // ── Tier 1: Design request → MCMC backend ────────────────────────────────
+    // Only messages that explicitly ask for a new design/optimization run hit the backend.
+    if (DESIGN_RE.test(userMessage)) {
+      setLoading(true);
+      setIsRunning(true);
+      try {
+        const res = await agentApi.design(patient, userMessage, designSession);
+        // Only append agent messages — the user message was already added optimistically
+        // above, and the backend echoes it back as messages[0] which would cause a duplicate.
+        const agentMessages = res.data.messages.filter((m) => m.role === 'agent');
+        setMessages((prev) => [...prev, ...agentMessages]);
+        setIsRunning(false);
+        if (res.data.run_id) setCurrentRunId(res.data.run_id);
+
+        const rounds = res.data.messages
+          ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+          .map((m) => m.data?.rounds)
+          .flat()
+          .filter(Boolean) || [];
+
+        const lastComplete = res.data.messages?.filter((m) => m.data?.status === 'complete').pop();
+        const totalTime = lastComplete?.data?.total_time || 0;
+
+        if (rounds.length > 0) {
+          const withMuts = res.data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
+          const roundData = rounds.map((r: any, i: number) => ({
+            round: i + 1,
+            sequence: r.sequence || '',
+            binding_score: r.binding_score || 0,
+            stability_score: r.stability_score || 0,
+            solubility_score: r.solubility_score || 0,
+            total_energy: r.total_energy || 0,
+            mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
+          }));
+          setDesignRounds(roundData);
+          setDesignTime(totalTime);
+          setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
+        }
+
+        if (res.data.candidate_sequence) {
+          setCandidates((prev) => {
+            const ranked = (res.data.messages
+              .filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
+              .flatMap((m) => m.data?.rounds || [])
+              .map((r: any, i: number) => ({
+                rank: i + 1, sequence: r.sequence || '',
+                binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
+                solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
+                kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                serum_half_life_min: r.serum_half_life_min,
+                selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
+              })) as Candidate[]);
+            return ranked.length > 0 ? ranked : prev;
+          });
+          const last = res.data.messages[res.data.messages.length - 1];
+          if (last?.data?.pdb_id) {
+            setActiveViewerPdb(last.data.pdb_id);
+            setActiveViewerMuts(res.data.mutations || []);
+            setSeed(last.data.seed || res.data.candidate_sequence);
+          }
+
+          // Build designSession from best round so follow-up chat is grounded in actual results
+          if (lastComplete?.data?.status === 'complete') {
+            const bestRound = (lastComplete.data.rounds as any[])
+              ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
+            if (bestRound) {
+              const seedSeq: string = lastComplete.data.seed || '';
+              const bestSeq: string = bestRound.sequence || '';
+              const mutationsFromSeed: string[] = [];
+              for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
+                if (seedSeq[i] !== bestSeq[i]) {
+                  mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
+                }
+              }
+              if (bestSeq.length !== seedSeq.length && seedSeq) {
+                mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
+              }
+              const roundsSummary = (lastComplete.data.rounds as any[])?.map((r: any) => ({
+                round: r.round,
+                sequence: r.sequence,
+                binding_score: r.binding_score,
+                delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
+                kd_nM: r.kd_nM,
+                lab_viability_score: r.lab_viability_score,
+                is_best: r.is_best,
+              })) || [];
+              setDesignSession({
+                target_name: lastComplete.data.target || patient?.cancer_type || '',
+                pdb_id: lastComplete.data.pdb_id || '',
+                best_sequence: bestSeq,
+                seed_sequence: seedSeq,
+                binding_score: bestRound.binding_score,
+                delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
+                kd_nM: bestRound.kd_nM,
+                stability_score: bestRound.stability_score,
+                solubility_score: bestRound.solubility_score,
+                total_energy: bestRound.total_energy,
+                lab_viability_score: bestRound.lab_viability_score,
+                mutations_from_seed: mutationsFromSeed,
+                rounds_summary: roundsSummary,
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail || 'Request failed';
+        setError(detail);
+        setMessages((prev) => [...prev, { role: 'agent', content: `Error: ${detail}`, data: { status: 'error' } }]);
+        setIsRunning(false);
+      }
+      setLoading(false);
       return;
     }
 
+    // ── Tier 2: Known biophysics topic → local static QA (instant, no backend) ─
+    const qaAnswer = getQAAnswer(userMessage);
+    if (qaAnswer !== null) {
+      setMessages((prev) => [...prev, { role: 'agent', content: qaAnswer }]);
+      return;
+    }
+
+    // ── Tier 3: Active session → grounded conversational reply (instant) ───────
+    const sessionReply = buildSessionReply(userMessage, designSession ?? null, patient);
+    if (sessionReply !== null) {
+      setMessages((prev) => [...prev, { role: 'agent', content: sessionReply }]);
+      return;
+    }
+
+    // ── Tier 4: Unknown topic → backend static QA fallback (no MCMC) ──────────
+    // Backend's _is_design_request() won't match; returns a conversational answer.
     setLoading(true);
     setIsRunning(true);
-
     try {
       const res = await agentApi.design(patient, userMessage, designSession);
-      // Only append agent messages — the user message was already added optimistically
-      // above, and the backend echoes it back as messages[0] which would cause a duplicate.
-      // Also preserves full conversation history across turns.
       const agentMessages = res.data.messages.filter((m) => m.role === 'agent');
       setMessages((prev) => [...prev, ...agentMessages]);
       setIsRunning(false);
       if (res.data.run_id) setCurrentRunId(res.data.run_id);
-
-      const rounds = res.data.messages
-        ?.filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
-        .map((m) => m.data?.rounds)
-        .flat()
-        .filter(Boolean) || [];
-
-      const lastComplete = res.data.messages?.filter((m) => m.data?.status === 'complete').pop();
-      const totalTime = lastComplete?.data?.total_time || 0;
-
-      if (rounds.length > 0) {
-        const withMuts = res.data.messages?.filter((m) => m.data?.mutations).map((m) => m.data?.mutations).flat() || [];
-        const roundData = rounds.map((r: any, i: number) => ({
-          round: i + 1,
-          sequence: r.sequence || '',
-          binding_score: r.binding_score || 0,
-          stability_score: r.stability_score || 0,
-          solubility_score: r.solubility_score || 0,
-          total_energy: r.total_energy || 0,
-          mutations: withMuts.filter((m: any) => m) as { position: number; from: string; to: string }[],
-        }));
-        setDesignRounds(roundData);
-        setDesignTime(totalTime);
-        setDesignTarget(lastComplete?.data?.target || patient?.tumor_markers || patient?.cancer_type || '');
-      }
-
-      if (res.data.candidate_sequence) {
-        setCandidates((prev) => {
-          const ranked = (res.data.messages
-            .filter((m) => m.data?.status === 'round_complete' || m.data?.status === 'complete')
-            .flatMap((m) => m.data?.rounds || [])
-            .map((r: any, i: number) => ({
-              rank: i + 1, sequence: r.sequence || '',
-              binding_score: r.binding_score || 0, stability_score: r.stability_score || 0,
-              solubility_score: r.solubility_score || 0, total_energy: r.total_energy,
-              kd_nM: r.kd_nM, delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
-              serum_half_life_min: r.serum_half_life_min,
-              selectivity_ratio: r.selectivity_ratio, toxicity_flag: r.toxicity_flag,
-            })) as Candidate[]);
-          return ranked.length > 0 ? ranked : prev;
-        });
-        const last = res.data.messages[res.data.messages.length - 1];
-        if (last?.data?.pdb_id) {
-          setActiveViewerPdb(last.data.pdb_id);
-          setActiveViewerMuts(res.data.mutations || []);
-          setSeed(last.data.seed || res.data.candidate_sequence);
-        }
-
-        // Build designSession from best round so follow-up chat is grounded in actual results
-        if (lastComplete?.data?.status === 'complete') {
-          const bestRound = (lastComplete.data.rounds as any[])
-            ?.sort((a: any, b: any) => b.binding_score - a.binding_score)[0];
-          if (bestRound) {
-            const seedSeq: string = lastComplete.data.seed || '';
-            const bestSeq: string = bestRound.sequence || '';
-            const mutationsFromSeed: string[] = [];
-            for (let i = 0; i < Math.min(seedSeq.length, bestSeq.length); i++) {
-              if (seedSeq[i] !== bestSeq[i]) {
-                mutationsFromSeed.push(`${seedSeq[i]}${i + 1}${bestSeq[i]}`);
-              }
-            }
-            if (bestSeq.length !== seedSeq.length && seedSeq) {
-              mutationsFromSeed.push(`len ${seedSeq.length}→${bestSeq.length}`);
-            }
-            const roundsSummary = (lastComplete.data.rounds as any[])?.map((r: any) => ({
-              round: r.round,
-              sequence: r.sequence,
-              binding_score: r.binding_score,
-              delta_g_binding_kcal_mol: r.delta_g_binding_kcal_mol,
-              kd_nM: r.kd_nM,
-              lab_viability_score: r.lab_viability_score,
-              is_best: r.is_best,
-            })) || [];
-            setDesignSession({
-              target_name: lastComplete.data.target || patient?.cancer_type || '',
-              pdb_id: lastComplete.data.pdb_id || '',
-              best_sequence: bestSeq,
-              seed_sequence: seedSeq,
-              binding_score: bestRound.binding_score,
-              delta_g_kcal_mol: bestRound.delta_g_binding_kcal_mol,
-              kd_nM: bestRound.kd_nM,
-              stability_score: bestRound.stability_score,
-              solubility_score: bestRound.solubility_score,
-              total_energy: bestRound.total_energy,
-              lab_viability_score: bestRound.lab_viability_score,
-              mutations_from_seed: mutationsFromSeed,
-              rounds_summary: roundsSummary,
-            });
-          }
-        }
-      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail || 'Request failed';
       setError(detail);

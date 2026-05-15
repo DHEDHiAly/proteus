@@ -203,3 +203,42 @@ Three bugs caused session-specific questions to return generic answers instead o
 - 9/9 regression tests pass (`tests/test_agent_conversation.py`)
 - `respond_grounded` precision smoke test: 9/9 keyword routing correct, no-session guard holds
 - End-to-end `agent.run()` smoke test: all four routing cases verified above
+
+---
+
+## Frontend 4-tier routing overhaul — handleSend refactor (commit after efb7297)
+
+### Problem
+After the backend routing fix (efb7297), the frontend `handleSend` still only had 2 tiers:
+1. `getQAAnswer` match → local static QA
+2. Everything else → `agentApi.design` (MCMC backend call)
+
+This meant conversational messages without a QA_PAIRS hit (`"how is my design doing?"`, `"what are the mutations?"`) still triggered the full `agentApi.design` call. The backend's `_is_design_request()` correctly blocked MCMC for those, but:
+- The call was unnecessary (latency, potential flicker)
+- A stray extra `}` after `buildSessionReply` (line 277) would cause a compile error
+
+### Fixes
+
+**`frontend/src/pages/AgentPage.tsx`**
+
+1. **Removed extra `}` (syntax error)** at line 277 — spurious closing brace after `buildSessionReply`.
+
+2. **Refactored `handleSend` to full 4-tier routing:**
+
+   | Tier | Condition | Action |
+   |---|---|---|
+   | 1 | `DESIGN_RE.test(userMessage)` | `agentApi.design` (MCMC) + full session build |
+   | 2 | `getQAAnswer(userMessage) !== null` | Local static answer, instant, no backend |
+   | 3 | `buildSessionReply(...) !== null` | Local grounded answer from session data, instant |
+   | 4 | Fallback | `agentApi.design` (backend static QA, no MCMC) |
+
+   Tiers 2 and 3 skip `setLoading`/`setIsRunning` — no "Running..." flicker for conversational questions.
+
+### Verification
+- `tsc --noEmit`: 0 errors
+- Routing logic trace:
+  - `"design a peptide"` → DESIGN_RE match → Tier 1 MCMC ✓
+  - `"what is MCMC?"` → no DESIGN_RE → QA_PAIRS `/\bmcmc\b/` → Tier 2 static ✓
+  - `"what is the binding score?"` + session → no DESIGN_RE → no QA match → `buildSessionReply` `/\bscore[s]?\b.*\bbinding\b/` → Tier 3 grounded `buildFullSummary` ✓
+  - `"what are the mutations?"` + session → Tier 3 `buildMutationReply` ✓
+  - `"explain hydrogen bonds"` → Tier 4 backend static QA ✓
