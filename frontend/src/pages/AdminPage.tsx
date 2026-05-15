@@ -7,8 +7,10 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'runs' | 'users' | 'audit'>('runs')
   const [allRuns, setAllRuns] = useState<any[]>([])
   const [auditLogs, setAuditLogs] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [cleanupMsg, setCleanupMsg] = useState('')
+  const [roleUpdating, setRoleUpdating] = useState<string | null>(null)
 
   const fetchData = async () => {
     setIsLoading(true)
@@ -19,6 +21,9 @@ export default function AdminPage() {
       } else if (activeTab === 'audit') {
         const res = await adminApi.getAuditLogs({ page_size: 100 })
         setAuditLogs(res.data.logs)
+      } else if (activeTab === 'users') {
+        const res = await adminApi.listUsers({ page_size: 100 })
+        setUsers(res.data.users ?? res.data)
       }
     } catch {}
     setIsLoading(false)
@@ -35,6 +40,25 @@ export default function AdminPage() {
       setCleanupMsg(res.data.message)
       setTimeout(() => setCleanupMsg(''), 5000)
     } catch {}
+  }
+
+  const handleRoleToggle = async (userId: string, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'researcher' : 'admin'
+    setRoleUpdating(userId)
+    try {
+      await adminApi.updateUser(userId, { role: newRole })
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: newRole } : u))
+    } catch {}
+    setRoleUpdating(null)
+  }
+
+  const handleActiveToggle = async (userId: string, isActive: boolean) => {
+    setRoleUpdating(userId + '-active')
+    try {
+      await adminApi.updateUser(userId, { is_active: !isActive })
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: !isActive } : u))
+    } catch {}
+    setRoleUpdating(null)
   }
 
   return (
@@ -113,7 +137,70 @@ export default function AdminPage() {
         </div>
       ) : activeTab === 'users' ? (
         <div className="card">
-          <p className="text-gray-500">User management available for admin role. Visit the admin section in the API.</p>
+          <h3 className="font-semibold mb-4">Users ({users.length})</h3>
+          {users.length === 0 ? (
+            <p className="text-gray-500 text-sm">No users found or insufficient permissions.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Role</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Active</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Joined</th>
+                    {user?.role === 'admin' && (
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Actions</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {users.map((u: any) => (
+                    <tr key={u.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium">{u.full_name || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{u.email}</td>
+                      <td className="px-3 py-2">
+                        <span className={`capitalize text-xs px-2 py-0.5 rounded-full font-medium ${
+                          u.role === 'admin' ? 'bg-purple-100 text-purple-700'
+                            : u.role === 'mentor' ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={u.is_active ? 'text-green-600' : 'text-red-500'}>
+                          {u.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 text-xs">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                      </td>
+                      {user?.role === 'admin' && (
+                        <td className="px-3 py-2 space-x-2">
+                          <button
+                            onClick={() => handleRoleToggle(u.id, u.role)}
+                            disabled={roleUpdating === u.id || u.id === user?.id}
+                            className="text-xs text-blue-600 hover:underline disabled:opacity-40"
+                          >
+                            {roleUpdating === u.id ? '...' : u.role === 'admin' ? 'Demote' : 'Promote'}
+                          </button>
+                          <button
+                            onClick={() => handleActiveToggle(u.id, u.is_active)}
+                            disabled={roleUpdating === u.id + '-active' || u.id === user?.id}
+                            className="text-xs text-red-600 hover:underline disabled:opacity-40"
+                          >
+                            {roleUpdating === u.id + '-active' ? '...' : u.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       ) : (
         <div className="card">

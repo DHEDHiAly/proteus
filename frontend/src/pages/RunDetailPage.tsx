@@ -258,12 +258,27 @@ export default function RunDetailPage() {
                 </button>
                 <button
                   onClick={() => {
-                    const csv = [
-                      ['rank', 'sequence', 'binding_score', 'stability_score', 'solubility_score'],
-                      ...candidates.map((c) => [
-                        c.rank, c.sequence, c.binding_score, c.stability_score, c.solubility_score,
-                      ]),
-                    ].map((r) => r.join(',')).join('\n')
+                    const headers = [
+                      'rank', 'sequence', 'binding_score', 'stability_score', 'solubility_score',
+                      'kd_nM', 'delta_g_binding_kcal_mol', 'total_energy', 'num_mutations_from_seed',
+                      'hydrophobicity', 'net_charge', 'selectivity_ratio', 'serum_half_life_min',
+                    ]
+                    const rows = candidates.map((c) => [
+                      c.rank,
+                      c.sequence,
+                      c.binding_score,
+                      c.stability_score,
+                      c.solubility_score,
+                      c.kd_nM ?? '',
+                      c.delta_g_binding_kcal_mol ?? '',
+                      c.total_energy ?? '',
+                      c.num_mutations_from_seed ?? '',
+                      c.hydrophobicity ?? '',
+                      c.net_charge ?? '',
+                      c.selectivity_ratio ?? '',
+                      c.serum_half_life_min ?? '',
+                    ])
+                    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n')
                     const blob = new Blob([csv], { type: 'text/csv' })
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a')

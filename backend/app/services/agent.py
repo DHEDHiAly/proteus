@@ -12,7 +12,10 @@ from app.core.mcmc import MCMCParallelSampler
 from app.core.energy import EnergyOracle
 from app.core.proposal import ProposalDistribution
 from app.core.esm2 import ESM2EmbeddingCache
-from app.core.docking_oracle import DockingOracle, LabFeasibilityScorer
+from app.core.docking_oracle import (
+    DockingOracle, LabFeasibilityScorer,
+    TargetSelectivityScorer, ResistanceEscapePredictor, EnhancedPKPredictor
+)
 from app.schemas.agent import PatientInfo, AgentMessage, AgentRunResponse, DesignSessionContext
 from app.api.targets import load_targets_metadata
 from app.services.chat_responder import ChatResponder
@@ -21,33 +24,76 @@ from app.services.context_aware_responder import ContextAwareChatResponder
 logger = logging.getLogger(__name__)
 
 CANCER_TARGET_MAP = {
+    # EGFRvIII — glioblastoma
     "glioblastoma": ("EGFRvIII", "3gp1"),
     "gbm": ("EGFRvIII", "3gp1"),
     "egfr": ("EGFRvIII", "3gp1"),
     "egfrviii": ("EGFRvIII", "3gp1"),
+    # KRAS G12C — lung / pancreatic / colorectal
     "nsclc": ("KRAS_G12C", "6OIM"),
     "lung": ("KRAS_G12C", "6OIM"),
     "kras": ("KRAS_G12C", "6OIM"),
     "g12c": ("KRAS_G12C", "6OIM"),
     "pancreatic": ("KRAS_G12C", "6OIM"),
     "colorectal": ("KRAS_G12C", "6OIM"),
+    # PD-L1 — immune checkpoint / melanoma / breast
     "pd-l1": ("PD-L1", "4zqk"),
     "pdl1": ("PD-L1", "4zqk"),
     "melanoma": ("PD-L1", "4zqk"),
-    "breast": ("PD-L1", "4zqk"),
     "solid tumor": ("PD-L1", "4zqk"),
+    # SARS-CoV-2 3CL protease
     "covid": ("SARS-CoV-2_3CL", "6LU7"),
     "3cl": ("SARS-CoV-2_3CL", "6LU7"),
     "protease": ("SARS-CoV-2_3CL", "6LU7"),
     "coronavirus": ("SARS-CoV-2_3CL", "6LU7"),
     "sars": ("SARS-CoV-2_3CL", "6LU7"),
+    # HER2 — breast / gastric / ovarian
+    "her2": ("HER2", "3WSQ"),
+    "erbb2": ("HER2", "3WSQ"),
+    "breast": ("HER2", "3WSQ"),
+    "gastric": ("HER2", "3WSQ"),
+    # BCR-ABL1 — CML / Philadelphia+ ALL
+    "leukemia": ("BCR-ABL1", "2HYY"),
+    "cml": ("BCR-ABL1", "2HYY"),
+    "bcr-abl": ("BCR-ABL1", "2HYY"),
+    "bcrabl": ("BCR-ABL1", "2HYY"),
+    "abl": ("BCR-ABL1", "2HYY"),
+    "philadelphia": ("BCR-ABL1", "2HYY"),
+    # VEGFR2 — angiogenesis / liver / ovarian
+    "vegfr": ("VEGFR2", "4ASD"),
+    "vegfr2": ("VEGFR2", "4ASD"),
+    "angiogenesis": ("VEGFR2", "4ASD"),
+    "liver": ("VEGFR2", "4ASD"),
+    "hepatocellular": ("VEGFR2", "4ASD"),
+    "ovarian": ("VEGFR2", "4ASD"),
+    # AR — prostate cancer
+    "prostate": ("AR", "2AM9"),
+    "androgen": ("AR", "2AM9"),
+    "crpc": ("AR", "2AM9"),
+    # CTLA-4 — immune checkpoint (complement to PD-L1)
+    "ctla": ("CTLA-4", "3OSK"),
+    "ctla-4": ("CTLA-4", "3OSK"),
+    "ctla4": ("CTLA-4", "3OSK"),
+    "ipilimumab": ("CTLA-4", "3OSK"),
+    # CD19 — B-cell lymphoma / ALL
+    "lymphoma": ("CD19", "6AL5"),
+    "cd19": ("CD19", "6AL5"),
+    "b-cell": ("CD19", "6AL5"),
+    "bcell": ("CD19", "6AL5"),
+    "cart": ("CD19", "6AL5"),
 }
 
 SEED_SEQUENCES = {
-    "EGFRvIII": "MVLDGEQG",
-    "PD-L1": "MVLDGEQG",
-    "KRAS_G12C": "MVLDGEQG",
-    "SARS-CoV-2_3CL": "MVAQWKEQ",
+    "EGFRvIII":       "MVLDGEQG",   # GBM peptide seed (Aly's work)
+    "PD-L1":          "MVLDGEQG",   # checkpoint blocker seed
+    "KRAS_G12C":      "MVLDGEQG",   # RAS allosteric seed
+    "SARS-CoV-2_3CL": "MVAQWKEQ",   # 3CL protease inhibitor seed
+    "HER2":           "LTVSSPEK",   # pertuzumab domain-II epitope seed
+    "BCR-ABL1":       "MKHKSEEL",   # myristoyl-pocket allosteric seed
+    "VEGFR2":         "VHFNMTQR",   # VEGF D2 binding loop mimic seed
+    "AR":             "FXXLFQAA",   # LXXLL coactivator motif seed (X=L)
+    "CTLA-4":         "MYPPPY",     # CTLA-4 B7-binding MYPPPY motif
+    "CD19":           "MGAFQCLD",   # FMC63 CDR3 mimic seed
 }
 
 # Amino acid chemical property classes
@@ -967,6 +1013,49 @@ class ProteinDesignAgent:
 
         best = candidates[0] if candidates else {}
 
+        # ─── New: Compute ensemble rankings with selectivity, escape, and PK scores ────
+        selectivity_scorer = TargetSelectivityScorer(oracle.docking_oracle)
+        escape_predictor = ResistanceEscapePredictor(oracle.docking_oracle)
+        pk_predictor = EnhancedPKPredictor()
+
+        top_ensemble = []
+        for i, candidate in enumerate(candidates[:10]):  # Top-10 ensemble
+            seq = candidate.get("sequence", "")
+
+            # Selectivity assessment
+            selectivity_result = selectivity_scorer.assess_selectivity(seq, target_name)
+
+            # Resistance escape prediction
+            escape_result = escape_predictor.predict_escapes(seq, max_escapes=5)
+
+            # Enhanced PK prediction
+            pk_result = pk_predictor.predict_pk(seq)
+
+            ensemble_item = {
+                "rank": i + 1,
+                "sequence": seq,
+                "binding_score": candidate.get("binding_score", 0),
+                "delta_g_binding_kcal_mol": candidate.get("delta_g_binding_kcal_mol", 0.0),
+                "synthesis_feasibility_score": candidate.get("synthesis_feasibility_score", 0.0),
+                "lab_viability_score": candidate.get("lab_viability_score", 0.0),
+                # Selectivity metrics
+                "selectivity_score": selectivity_result.get("selectivity_score", 50.0),
+                "problematic_off_targets": selectivity_result.get("problematic_off_targets", []),
+                # Escape resistance metrics
+                "escape_score": escape_result.get("escape_score", 0.5),
+                "is_escape_resistant": escape_result.get("is_escape_resistant", False),
+                "top_escape_variants": escape_result.get("top_escape_variants", [])[:3],
+                # PK metrics
+                "estimated_serum_half_life_min": pk_result.get("estimated_serum_half_life_min", 20.0),
+                "bbb_penetration_feasible": pk_result.get("bbb_penetration_feasible", False),
+                "tissue_accumulation_risk": pk_result.get("tissue_accumulation_risk", False),
+            }
+            top_ensemble.append(ensemble_item)
+
+        best_with_ensemble = dict(best)
+        if top_ensemble:
+            best_with_ensemble.update(top_ensemble[0])  # Update best with selectivity/escape/PK
+
         # Compute per-mutation rationale
         mutations = []
         if best.get("sequence") and seed:
@@ -1044,10 +1133,10 @@ class ProteinDesignAgent:
         return {
             "run_id": result.run_id,
             "seed": seed,
-            "sequence": best.get("sequence", result.best_overall_sequence),
-            "binding_score": best.get("binding_score", 0),
-            "stability_score": best.get("stability_score", 0),
-            "solubility_score": best.get("solubility_score", 0),
+            "sequence": best_with_ensemble.get("sequence", result.best_overall_sequence),
+            "binding_score": best_with_ensemble.get("binding_score", 0),
+            "stability_score": best_with_ensemble.get("stability_score", 0),
+            "solubility_score": best_with_ensemble.get("solubility_score", 0),
             "total_energy": result.best_overall_energy,
             "rhat": result.rhat,
             "ess": result.ess,
@@ -1058,46 +1147,59 @@ class ProteinDesignAgent:
             "steps": steps,
             "chains": num_chains,
             # Hard biophysical metrics from best candidate
-            "aggregation_propensity": best.get("aggregation_propensity", 0),
-            "immunogenicity_score": best.get("immunogenicity_score", 0),
-            "ddg_estimate_kcal_mol": best.get("ddg_estimate_kcal_mol", 0),
-            "manufacturability_score": best.get("manufacturability_score", 0),
-            "plddt_estimate": best.get("plddt_estimate", 0),
-            "novelty_score": best.get("novelty_score", 0),
+            "aggregation_propensity": best_with_ensemble.get("aggregation_propensity", 0),
+            "immunogenicity_score": best_with_ensemble.get("immunogenicity_score", 0),
+            "ddg_estimate_kcal_mol": best_with_ensemble.get("ddg_estimate_kcal_mol", 0),
+            "manufacturability_score": best_with_ensemble.get("manufacturability_score", 0),
+            "plddt_estimate": best_with_ensemble.get("plddt_estimate", 0),
+            "novelty_score": best_with_ensemble.get("novelty_score", 0),
             # Pharmacokinetic estimates
-            "kd_nM": best.get("kd_nM", 0),
-            "serum_half_life_min": best.get("serum_half_life_min", 0),
-            "selectivity_ratio": best.get("selectivity_ratio", 1.0),
-            "toxicity_flag": best.get("toxicity_flag", False),
-            "delta_g_binding_kcal_mol": best.get("delta_g_binding_kcal_mol", 0.0),
+            "kd_nM": best_with_ensemble.get("kd_nM", 0),
+            "serum_half_life_min": best_with_ensemble.get("serum_half_life_min", 0),
+            "selectivity_ratio": best_with_ensemble.get("selectivity_ratio", 1.0),
+            "toxicity_flag": best_with_ensemble.get("toxicity_flag", False),
+            "delta_g_binding_kcal_mol": best_with_ensemble.get("delta_g_binding_kcal_mol", 0.0),
             # Triple-Gate Physics Model
-            "hbond_count": best.get("hbond_count", 0),
-            "entropic_penalty": best.get("entropic_penalty", 0.0),
-            "solvation_delta_g": best.get("solvation_delta_g", 0.0),
-            "surface_complementarity": best.get("surface_complementarity", 0.0),
-            "gate1_pass": best.get("gate1_pass", False),
-            "gate2_pass": best.get("gate2_pass", False),
-            "gate3_pass": best.get("gate3_pass", False),
-            "lab_viability_score": best.get("lab_viability_score", 0.0),
-            "selectivity_ddg": best.get("selectivity_ddg", 0.0),
+            "hbond_count": best_with_ensemble.get("hbond_count", 0),
+            "entropic_penalty": best_with_ensemble.get("entropic_penalty", 0.0),
+            "solvation_delta_g": best_with_ensemble.get("solvation_delta_g", 0.0),
+            "surface_complementarity": best_with_ensemble.get("surface_complementarity", 0.0),
+            "gate1_pass": best_with_ensemble.get("gate1_pass", False),
+            "gate2_pass": best_with_ensemble.get("gate2_pass", False),
+            "gate3_pass": best_with_ensemble.get("gate3_pass", False),
+            "lab_viability_score": best_with_ensemble.get("lab_viability_score", 0.0),
+            "selectivity_ddg": best_with_ensemble.get("selectivity_ddg", 0.0),
             # Synthesis + delivery feasibility (from LabFeasibilityScorer)
-            "synthesis_feasibility_score": best.get("synthesis_feasibility_score", 0.0),
-            "synthesis_feasible": best.get("synthesis_feasible", False),
-            "synthesis_issues": best.get("synthesis_issues", []),
-            "synthesis_recommendations": best.get("synthesis_recommendations", []),
-            "estimated_synthesis_time_days": best.get("estimated_synthesis_time_days"),
-            "estimated_synthesis_cost_usd": best.get("estimated_synthesis_cost_usd"),
+            "synthesis_feasibility_score": best_with_ensemble.get("synthesis_feasibility_score", 0.0),
+            "synthesis_feasible": best_with_ensemble.get("synthesis_feasible", False),
+            "synthesis_issues": best_with_ensemble.get("synthesis_issues", []),
+            "synthesis_recommendations": best_with_ensemble.get("synthesis_recommendations", []),
+            "estimated_synthesis_time_days": best_with_ensemble.get("estimated_synthesis_time_days"),
+            "estimated_synthesis_cost_usd": best_with_ensemble.get("estimated_synthesis_cost_usd"),
+            # Off-target selectivity (NEW)
+            "selectivity_score": best_with_ensemble.get("selectivity_score", 50.0),
+            "problematic_off_targets": best_with_ensemble.get("problematic_off_targets", []),
+            # Escape resistance (NEW)
+            "escape_score": best_with_ensemble.get("escape_score", 0.5),
+            "is_escape_resistant": best_with_ensemble.get("is_escape_resistant", False),
+            "top_escape_variants": best_with_ensemble.get("top_escape_variants", []),
+            # Enhanced PK/PD (NEW)
+            "estimated_serum_half_life_min": best_with_ensemble.get("estimated_serum_half_life_min", 20.0),
+            "bbb_penetration_feasible": best_with_ensemble.get("bbb_penetration_feasible", False),
+            "tissue_accumulation_risk": best_with_ensemble.get("tissue_accumulation_risk", False),
+            # Top-10 ensemble (NEW)
+            "top_ensemble": top_ensemble,
             # Agent-level outputs
-            "solubility_tags": _suggest_solubility_tags(best.get("sequence", "")),
+            "solubility_tags": _suggest_solubility_tags(best_with_ensemble.get("sequence", "")),
             "notes_3d": _generate_3d_notes(
-                best.get("sequence", ""), target_name, pocket, pdb_id
+                best_with_ensemble.get("sequence", ""), target_name, pocket, pdb_id
             ),
             "fasta": _format_fasta(
-                best.get("sequence", ""),
+                best_with_ensemble.get("sequence", ""),
                 target_name,
-                best.get("delta_g_binding_kcal_mol", 0.0),
-                best.get("kd_nM", 0.0),
-                best.get("lab_viability_score", 0.0),
+                best_with_ensemble.get("delta_g_binding_kcal_mol", 0.0),
+                best_with_ensemble.get("kd_nM", 0.0),
+                best_with_ensemble.get("lab_viability_score", 0.0),
             ),
         }
 

@@ -90,6 +90,14 @@ export interface Candidate {
   num_mutations_from_seed: number
   sequence_entropy: number | null
   homology_to_known: number | null
+  // Extended biophysical fields
+  kd_nM?: number | null
+  delta_g_binding_kcal_mol?: number | null
+  total_energy?: number | null
+  selectivity_ratio?: number | null
+  serum_half_life_min?: number | null
+  toxicity_flag?: boolean | null
+  lab_viability_score?: number | null
 }
 
 export interface MutationStep {

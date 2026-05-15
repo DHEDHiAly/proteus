@@ -55,6 +55,15 @@ class ChatResponder:
                      r'\bwhy\s+\w\d\w\b|\banchor\b|\bsalt\s+bridge\b', q):
             return self._explain_mutations(current_run, session_context)
 
+        if re.search(r'\bselect|\boff.target|\btoxic|\breaction\b', q):
+            return self._assess_selectivity(current_run, session_context)
+
+        if re.search(r'\bescape|\bresist|\bmutation\s+resistant\b|\bhard.to|robustness\b', q):
+            return self._assess_escape_resistance(current_run, session_context)
+
+        if re.search(r'\bpk\b|\bpd\b|\bpharmaco|\bhalf.life|stability\b|circulation\b', q):
+            return self._assess_pk_pd(current_run, session_context)
+
         return None  # no strong match; let caller handle
 
     # ──────────────────────────────────────────────────────────────────────
@@ -252,6 +261,104 @@ class ChatResponder:
             f"**Mutation rationale for `{seq}`** (ΔG {dg:.1f} kcal/mol):\n\n"
             + '\n'.join(mutation_lines)
             + ('\n\n**Key residue roles:**\n' + '\n'.join(f"• {n}" for n in notes) if notes else '')
+        )
+
+    def _assess_selectivity(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle to assess selectivity."
+
+        selectivity_score = (run or session or {}).get('selectivity_score', 50.0)
+        problematic = (run or session or {}).get('problematic_off_targets', [])
+        escape_resistant = (run or session or {}).get('is_escape_resistant', False)
+
+        status_emoji = "✓" if selectivity_score >= 70 else "⚠" if selectivity_score >= 50 else "✗"
+        status_text = "strong" if selectivity_score >= 70 else "moderate" if selectivity_score >= 50 else "weak"
+
+        return (
+            f"**Selectivity Profile: {selectivity_score:.0f}/100** ({status_emoji} {status_text})\n\n"
+            f"**Target binding:** ΔG = {dg:.1f} kcal/mol\n\n"
+            f"**Problematic off-targets:** {', '.join(problematic) if problematic else 'None identified'}\n\n"
+            f"**Interpretation:** Selectivity score measures preference for on-target over 20+ reference off-targets "
+            f"(kinases, related proteins). "
+            f"{'⚠ High cross-reactivity risk — consider pocket-specificity optimization.' if problematic else '✓ No major off-target liabilities.'}\n\n"
+            f"**Recommendation:** Validate selectivity experimentally (kinase panel, SPR multi-target) "
+            f"before advancing to in-vivo studies."
+        )
+
+    def _assess_escape_resistance(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle to assess escape resistance."
+
+        escape_score = (run or session or {}).get('escape_score', 0.5)
+        is_resistant = (run or session or {}).get('is_escape_resistant', False)
+        top_escapes = (run or session or {}).get('top_escape_variants', [])
+
+        status_text = "hard to escape" if is_resistant else "moderate escape risk"
+        status_emoji = "✓" if is_resistant else "⚠"
+
+        escape_lines = []
+        for i, escape in enumerate(top_escapes[:5], 1):
+            pos = escape.get('position', '?')
+            mut = escape.get('mutation', '?')
+            escape_lines.append(f"{i}. **{mut}** (position {pos})")
+
+        return (
+            f"**Escape Resistance: {escape_score:.2f}/1.0** ({status_emoji} {status_text})\n\n"
+            f"**Design sequence:** `{seq}` (ΔG {dg:.1f} kcal/mol)\n\n"
+            f"**Top single-mutation escape variants:**\n"
+            + ('\n'.join(f"• {line}" for line in escape_lines) if escape_lines else "• None found (highly robust)")
+            + f"\n\n**Interpretation:** Escape score (0–1) quantifies how many positions can tolerate mutations "
+            f"while maintaining on-target binding. "
+            f"{'Lower scores = harder to escape (better for cancer therapy).' if is_resistant else 'Consider design iteration for improved resistance.'}\n\n"
+            f"**Recommendations:**\n"
+            f"• Target escape-sensitive positions (low mutational tolerance) for binding lock-down\n"
+            f"• Screen resistance against known kinase mutations from your disease model"
+        )
+
+    def _assess_pk_pd(
+        self,
+        run: Optional[dict],
+        session: Optional[dict],
+    ) -> str:
+        seq, dg, _ = self._extract_best(run, session)
+        if not seq:
+            return "No design results yet. Run a design cycle to assess PK/PD properties."
+
+        serum_hl = (run or session or {}).get('estimated_serum_half_life_min', 20.0)
+        bbb_feasible = (run or session or {}).get('bbb_penetration_feasible', False)
+        tissue_risk = (run or session or {}).get('tissue_accumulation_risk', False)
+        net_charge = (run or session or {}).get('net_charge', 0)
+
+        hl_category = "very short" if serum_hl < 20 else "short" if serum_hl < 60 else "moderate" if serum_hl < 120 else "long"
+
+        bbb_status = "Yes — potential CNS target engagement" if bbb_feasible else "No — requires peripheral targeting strategy"
+        tissue_status = "⚠ Yes — monitor liver/spleen accumulation" if tissue_risk else "✓ No — distributed clearance expected"
+
+        return (
+            f"**Pharmacokinetics: `{seq}`**\n\n"
+            f"**Serum half-life:** ~{serum_hl:.0f} min ({hl_category})\n"
+            f"• Unmodified linear peptides: <20 min (protease degradation)\n"
+            f"• Cyclization (disulfide, if Cys ≥2): +50–200% boost\n"
+            f"• PEGylation (if charge-neutral): +300% boost to circulation\n\n"
+            f"**BBB penetration feasible:** {bbb_status}\n\n"
+            f"**Tissue accumulation risk:** {tissue_status}\n\n"
+            f"**Net charge:** {net_charge:+.0f} — "
+            f"{'Positive charge supports membrane crossing.' if net_charge > 0 else 'Anionic; needs CPP/NLS for intracellular delivery.' if net_charge < 0 else 'Neutral charge; consider CPP fusion for uptake.'}\n\n"
+            f"**Recommended modifications for clinical PK:**\n"
+            f"• Disulfide cyclization (if Cys ≥2): protease resistance\n"
+            f"• D-amino acid substitutions: serine protease block\n"
+            f"• C-terminal 40-kDa PEGylation: 2–4 hour serum half-life target\n"
+            f"• CPP fusion (TAT, poly-Arg): cellular uptake in target cells"
         )
 
     # ──────────────────────────────────────────────────────────────────────

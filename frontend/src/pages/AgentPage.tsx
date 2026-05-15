@@ -283,6 +283,29 @@ type Candidate = {
   serum_half_life_min?: number; selectivity_ratio?: number; toxicity_flag?: boolean;
 };
 
+// ── Inline markdown renderer ─────────────────────────────────────────────────
+// Handles **bold**, *italic*, and `code` spans within a single line of text.
+function renderInline(text: string): React.ReactNode {
+  const segments: React.ReactNode[] = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) segments.push(text.slice(last, match.index));
+    const m = match[0];
+    if (m.startsWith('**')) {
+      segments.push(<strong key={match.index} className="text-white font-semibold">{m.slice(2, -2)}</strong>);
+    } else if (m.startsWith('*')) {
+      segments.push(<em key={match.index} className="text-gray-300 italic">{m.slice(1, -1)}</em>);
+    } else {
+      segments.push(<code key={match.index} className="font-mono text-[9px] bg-white/5 px-0.5 rounded text-gray-300">{m.slice(1, -1)}</code>);
+    }
+    last = match.index + m.length;
+  }
+  if (last < text.length) segments.push(text.slice(last));
+  return <>{segments}</>;
+}
+
 // ── Simplified message renderer ──────────────────────────────────────────────
 function AgentMessageCard({ msg, onSave }: { msg: AgentMessage; onSave?: (best: any, target: string) => void }) {
   const d = msg.data;
@@ -604,21 +627,20 @@ function AgentMessageCard({ msg, onSave }: { msg: AgentMessage; onSave?: (best: 
         }
         // Bullet line (- ...)
         if (trimmed.startsWith('- ')) {
-          const content = trimmed.slice(2).replace(/\*\*/g, '');
           return (
             <div key={i} className="flex space-x-1.5 text-gray-400">
               <span className="text-gray-600 flex-shrink-0 mt-px">·</span>
-              <span>{content}</span>
+              <span>{renderInline(trimmed.slice(2))}</span>
             </div>
           );
         }
         // Header line: fully wrapped in ** (e.g. **Title**)
         if (trimmed.startsWith('**') && trimmed.endsWith('**') && trimmed.length > 4) {
-          return <div key={i} className="text-gray-300 font-medium mt-1">{trimmed.replace(/\*\*/g, '')}</div>;
+          return <div key={i} className="text-gray-300 font-medium mt-1">{trimmed.slice(2, -2)}</div>;
         }
-        // Partial bold: contains ** somewhere
-        if (trimmed.includes('**')) {
-          return <div key={i} className="text-gray-300">{trimmed.replace(/\*\*/g, '')}</div>;
+        // Any line containing inline markdown
+        if (/\*\*|`/.test(trimmed)) {
+          return <div key={i} className="text-gray-400">{renderInline(trimmed)}</div>;
         }
         // Plain text
         return <div key={i} className="text-gray-500">{trimmed}</div>;

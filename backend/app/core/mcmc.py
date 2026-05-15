@@ -2,6 +2,7 @@ import numpy as np
 import uuid
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Callable, Dict, Any, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -227,21 +228,31 @@ class MCMCParallelSampler:
         current_energies = [self.energy_oracle.compute_energy(s) for s in sequences]
 
         chain_results = []
-        for i in range(self.num_chains):
-            chain_result = self._run_single_chain(
-                sequences[i], i, self.temperatures[i], target_name
-            )
-            chain_results.append(chain_result)
-            current_energies[i] = chain_result.final_energy
-            sequences[i] = chain_result.final_sequence
-            if self.progress_callback:
-                self.progress_callback({
-                    "type": "chain_complete",
-                    "run_id": run_id,
-                    "chain_index": i,
-                    "best_energy": chain_result.best_energy,
-                    "acceptance_rate": chain_result.acceptance_rate,
-                })
+        with ThreadPoolExecutor(max_workers=self.num_chains) as executor:
+            futures = {
+                executor.submit(
+                    self._run_single_chain,
+                    sequences[i], i, self.temperatures[i], target_name
+                ): i
+                for i in range(self.num_chains)
+            }
+            completed_map: Dict[int, Any] = {}
+            for future in as_completed(futures):
+                i = futures[future]
+                chain_result = future.result()
+                completed_map[i] = chain_result
+                current_energies[i] = chain_result.final_energy
+                sequences[i] = chain_result.final_sequence
+                if self.progress_callback:
+                    self.progress_callback({
+                        "type": "chain_complete",
+                        "run_id": run_id,
+                        "chain_index": i,
+                        "best_energy": chain_result.best_energy,
+                        "acceptance_rate": chain_result.acceptance_rate,
+                    })
+            # Restore deterministic ordering by chain index
+            chain_results = [completed_map[i] for i in range(self.num_chains)]
 
         best_chain = min(chain_results, key=lambda c: c.best_energy)
         best_overall_sequence = best_chain.best_sequence
