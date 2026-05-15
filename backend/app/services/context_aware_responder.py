@@ -4,6 +4,11 @@ Context-aware chat responder: answers questions about the actual designed peptid
 the DesignSessionContext attached to each message.
 
 Returns None if no session or no best_sequence, allowing fallthrough to static QA.
+
+GroundedSessionAnswerer (respond_grounded) is a broad catch-all: when a session
+exists and the message looks like a question about scores / the current candidate,
+it ALWAYS returns a metric-grounded summary instead of falling through to the
+generic conversational fallback.
 """
 
 import re
@@ -34,6 +39,42 @@ _AA_PROPERTIES = {
     "Y": "aromatic polar",
     "V": "nonpolar aliphatic (hydrophobic)",
 }
+
+# -- Grounded catch-all patterns (score / metric questions) --
+
+# Any mention of these → answer with the full session metric summary.
+_GROUNDED_SCORE_PATTERNS = [
+    r"\bkcal\b",                                                  # "score in kcal/mol"
+    r"\bdelta[_\s]*g\b|\bdg\b",                                   # ΔG / dG
+    r"\bkd\b|\bdissociation\s+constant\b",                        # Kd
+    r"\bscore[s]?\b",                                             # "what is the score"
+    r"\bmetric[s]?\b",                                            # "show me the metrics"
+    r"\bresult[s]?\b",                                            # "what are the results"
+    r"\bvalue[s]?\b",                                             # "give me the values"
+    r"\bbinding\s+(energy|strength|affinity|result|number)\b",    # binding energy/affinity
+    r"\bstability\s+(score|result|value|number)\b",               # stability score
+    r"\bsolubility\s+(score|result|value|number)\b",              # solubility score
+    r"\blab\s+(viability|score|result|number|worth)\b",           # lab viability
+    r"\benergy\s+(score|result|value|number)\b",                  # energy value
+    r"how\s+(good|strong|tight|well|potent|bad|effective)\s+is",  # "how good is the binding"
+    r"how\s+(did\s+(we|it)|is\s+(the\s+)?(design|candidate|peptide|sequence))\b",
+    r"\bsummar(y|ize|ise)\b|\boverview\b|\breport\b",             # "summarize / overview"
+    r"what\s+(did|do|are)\s+\w+.{0,15}(get|have|show|give|produce|look)", # "what did we get"
+    r"(current|latest|best)\s+(candidate|peptide|design|sequence)\b",  # "current candidate"
+    r"all\s+(the\s+)?(metric|score|result|stat|number)\b",        # "all the metrics"
+    r"\bthe\s+number[s]?\b|\bthe\s+stat[s]?\b",                  # "the numbers"
+    r"(show|display|print|give)\s+(me\s+)?(the\s+)?(score|result|metric|stat|number)",
+]
+
+# Question mark variants (ASCII + common Unicode)
+_GROUNDED_QUESTION_MARK_RE = re.compile(r"[\?\uFF1F\uFE16\u2047\u061F]")
+
+# Interrogative sentence starters
+_GROUNDED_QUESTION_STARTERS = (
+    "what", "how", "why", "when", "where", "who", "explain",
+    "describe", "tell me", "show me", "give me", "can you", "could you",
+    "is it", "are they", "will it", "does it", "do you",
+)
 
 # -- Pattern lists for each topic --
 
@@ -454,6 +495,124 @@ class ContextAwareChatResponder:
             "",
             "Each round seeds from the best candidate of the previous round, with more MCMC steps "
             "and parallel chains for progressively finer convergence.",
+        ]
+
+        return "\n".join(lines)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Grounded catch-all: answers any question about the current peptide / scores
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def respond_grounded(
+        self,
+        message: str,
+        session: Optional[DesignSessionContext],
+    ) -> Optional[str]:
+        """
+        Broad catch-all for metric / score / general questions about the current
+        candidate. Only activates when a session with a lead sequence is present.
+
+        Priority hierarchy (all higher-priority handlers have already been called):
+          _answer_question → context_aware_responder.respond → chat_responder → (here)
+
+        Returns None only when:
+        - No session / no best_sequence, OR
+        - Message does not look like a question at all (e.g. greetings, commands)
+        """
+        if not session or not session.best_sequence:
+            return None
+
+        text = message.lower().strip()
+
+        # 1. Explicit score / metric keyword → immediate summary
+        for pattern in _GROUNDED_SCORE_PATTERNS:
+            if re.search(pattern, text):
+                return self._full_session_summary(session)
+
+        # 2. Any question-looking message when session is present
+        has_qmark = bool(_GROUNDED_QUESTION_MARK_RE.search(text))
+        is_starter = any(text.startswith(s) for s in _GROUNDED_QUESTION_STARTERS)
+        is_interrogative = bool(re.match(r"^\s*(how|what|why|when|where|who)\s+\w+", text))
+
+        if has_qmark or is_starter or is_interrogative:
+            return self._full_session_summary(session)
+
+        return None
+
+    def _full_session_summary(self, session: DesignSessionContext) -> str:
+        """Return a rich metric summary grounded in the actual session data."""
+        seq = session.best_sequence or ""
+        target = session.target_name or "the target"
+        dg = session.delta_g_kcal_mol
+        kd = session.kd_nM
+        stability = session.stability_score
+        solubility = session.solubility_score
+        lab = session.lab_viability_score
+
+        lines = [
+            f"**Current design summary for `{seq}` ({target})**",
+            "",
+        ]
+
+        if dg is not None:
+            if dg <= -9.0:
+                dg_interp = "strong binder"
+            elif dg <= -7.0:
+                dg_interp = "good binder"
+            elif dg <= -6.0:
+                dg_interp = "promising — meets the −6 kcal/mol lab-ordering threshold"
+            else:
+                dg_interp = "weak binder — below the −6 kcal/mol lab threshold"
+            lines.append(f"- **ΔG binding:** {dg:.2f} kcal/mol — {dg_interp}")
+        else:
+            lines.append("- **ΔG binding:** not available (run a design cycle to populate)")
+
+        if kd is not None:
+            if kd < 10:
+                kd_interp = "drug-like affinity"
+            elif kd < 100:
+                kd_interp = "high affinity"
+            elif kd < 1000:
+                kd_interp = "moderate affinity"
+            else:
+                kd_interp = "weak affinity"
+            lines.append(f"- **Kd (dissociation constant):** {kd:.0f} nM — {kd_interp}")
+
+        if stability is not None:
+            stab_flag = "adequate" if stability >= 0.4 else "low — consider thermostable constraint"
+            lines.append(
+                f"- **Stability:** {stability * 100:.0f}% secondary structure propensity ({stab_flag})"
+            )
+
+        if solubility is not None:
+            sol_flag = "adequate" if solubility >= 0.4 else "low — consider high solubility constraint"
+            lines.append(
+                f"- **Solubility:** {solubility * 100:.0f}% GRAVY-based estimate ({sol_flag})"
+            )
+
+        if lab is not None:
+            if lab >= 70:
+                lab_verdict = "lab-worthy — proceed to synthesis"
+            elif lab >= 50:
+                lab_verdict = "borderline — address failing Triple-Gate checks first"
+            else:
+                lab_verdict = "below threshold — significant optimization required"
+            lines.append(f"- **Lab viability:** {lab:.0f}/100 — {lab_verdict}")
+
+        if dg is not None and kd is not None:
+            lines += [
+                "",
+                "**Relationship:** ΔG = RT·ln(Kd) at 310 K (body temperature). "
+                "More negative ΔG = lower Kd = tighter binding.",
+            ]
+
+        lines += [
+            "",
+            "*Scores are in-silico heuristics from the MCMC oracle pipeline. "
+            "Validate binding with SPR, ITC, or a competitive binding assay before lab hand-off.*",
+            "",
+            "To improve: say **optimize for binding**, **high solubility**, "
+            "**thermostable**, or **run MCMC again**.",
         ]
 
         return "\n".join(lines)

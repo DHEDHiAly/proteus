@@ -460,10 +460,23 @@ _QA_PAIRS = [
         r"bining\s+score|binding\s+score.*kcal|kcal.*binding\s+score|what.*\bbinding\s+score\b|"
         r"which\s+.*\bscore\b.*kcal|explain.*binding.*percent",
         "**Binding % vs ΔG (kcal/mol) vs Energy (E)**\n\n"
-        "- **Binding %** (or 0–1 proxy): the oracle’s **relative** on-target binding ranking — useful for comparing candidates from the same run.\n"
+        "- **Binding %** (or 0–1 proxy): the oracle's **relative** on-target binding ranking — useful for comparing candidates from the same run.\n"
         "- **ΔG (kcal/mol)**: **modelled** from the estimated Kd at 310 K (ΔG ≈ 0.616 × ln(Kd [M])). More negative usually means tighter in this heuristic; many docking workflows use **≈ −6 kcal/mol** as a rough “worth ordering” screening line — still validate experimentally.\n"
         "- **E**: the **composite MCMC objective** (binding + stability + solubility + penalties). **Lower E is better in the search**, but E is **not** the same number as ΔG from a wet-lab assay.\n\n"
         "If ΔG shows as “—” in an old build, refresh the app; the API always sends modelled ΔG alongside the proxy.",
+    ),
+    (
+        r"(what\s+is|what's|show\s+me|give\s+me)\s+(the\s+)?(score|metric|result|value|number)s?\b|"
+        r"score[s]?\s+(in|of)\s+kcal|current\s+score|all\s+(the\s+)?score",
+        "**Available scores after a design run**\n\n"
+        "After completing a design cycle you will see:\n"
+        "- **ΔG binding** (kcal/mol): modelled free energy of binding; < −6 = lab-worthy\n"
+        "- **Kd** (nM): dissociation constant derived from ΔG at 310 K\n"
+        "- **Stability** (%): secondary structure propensity (helix + sheet content)\n"
+        "- **Solubility** (%): GRAVY-based estimate; higher D/E/K/R content → higher score\n"
+        "- **Lab Viability** (0–100): composite Triple-Gate score; ≥ 70 = proceed to synthesis\n"
+        "- **Selectivity ratio**: on-target / off-target binding; > 2× required\n\n"
+        "Run **design a peptide** to start a new cycle and populate these scores."
     ),
     (
         r"how\s+does\s+(this|the|your|that)\s+treatment\s+work|how\s+does\s+treatment\s+work|"
@@ -1132,6 +1145,14 @@ class ProteinDesignAgent:
             if responder_reply is not None:
                 messages.append(AgentMessage(role="agent", content=responder_reply))
                 return AgentRunResponse(reply=responder_reply, messages=messages)
+
+            # Grounded catch-all: answers ANY score / metric / general question using
+            # actual session data (ΔG, Kd, stability, solubility, lab viability).
+            # Must be tried after the specific responders so they still get priority.
+            grounded_reply = self.context_aware_responder.respond_grounded(message, session)
+            if grounded_reply is not None:
+                messages.append(AgentMessage(role="agent", content=grounded_reply))
+                return AgentRunResponse(reply=grounded_reply, messages=messages)
 
             clinical = _clinical_context_lines(patient)
             sess = _format_session_block(session)
