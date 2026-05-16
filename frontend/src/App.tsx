@@ -11,7 +11,7 @@ import ComparePage from './pages/ComparePage'
 import ProfilePage from './pages/ProfilePage'
 import AdminPage from './pages/AdminPage'
 import AgentPage from './pages/AgentPage'
-import BenchmarksDashboard from './pages/BenchmarksDashboard'
+import BenchmarksPage from './pages/BenchmarksPage'
 import ComparisonsPage from './pages/ComparisonsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -115,7 +115,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <BenchmarksDashboard />
+              <BenchmarksPage />
             </Layout>
           </ProtectedRoute>
         }
