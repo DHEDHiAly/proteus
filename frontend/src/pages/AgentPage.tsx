@@ -654,7 +654,9 @@ export default function AgentPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'landing' | 'workspace'>('landing');
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [messages, setMessages] = useState<AgentMessage[]>([
+    { role: 'agent', content: 'I specialize in protein design and biophysics. I can help you design and optimize peptide sequences for therapeutic applications. Describe a condition or target to get started, or ask me about protein engineering concepts.' },
+  ]);
   const [input, setInput] = useState('');
   const [patient, setPatient] = useState<PatientInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1337,7 +1339,7 @@ export default function AgentPage() {
                     <DesignCycleSummary rounds={designRounds} totalTime={designTime} targetName={designTarget} />
                   </div>
                 )}
-                {messages.length === 0 && (
+                {messages?.length === 0 && (
                   <div className="text-center py-16 text-gray-600">
                     <p className="text-xs">Ready to design</p>
                     <div className="flex flex-col gap-1.5 mt-4">
@@ -1350,7 +1352,7 @@ export default function AgentPage() {
                     </div>
                   </div>
                 )}
-                {messages.map((msg, i) => (
+                {messages?.map((msg, i) => (
                   <AgentMessageCard key={i} msg={msg} onSave={handleSaveDesign} />
                 ))}
                 {streamStatus && (
